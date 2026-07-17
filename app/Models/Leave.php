@@ -27,6 +27,11 @@ class Leave extends Model
         ];
     }
 
+    protected function serializeDate(\DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d');
+    }
+
     public function staff(): BelongsTo
     {
         return $this->belongsTo(Staff::class, 'staff_id');

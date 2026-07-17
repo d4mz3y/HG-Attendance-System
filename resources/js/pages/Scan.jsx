@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useToast } from '../components/Toast';
 
 function formatScanTime(iso) {
     const d = new Date(iso);
@@ -17,6 +18,7 @@ export default function Scan() {
     const [buffer, setBuffer] = useState('');
     const [modal, setModal] = useState(null);
     const [queued, setQueued] = useState(false);
+    const { addToast } = useToast();
 
     const focusInput = () => {
         requestAnimationFrame(() => inputRef.current?.focus());
@@ -82,6 +84,7 @@ export default function Scan() {
                 handleError(payload);
             }
         } catch (err) {
+            addToast('Unable to reach server. Please try again.', 'error');
             setModal({ variant: 'error', title: 'Network error', message: 'Unable to reach server. Please try again.' });
         }
         focusInput();
@@ -89,12 +92,19 @@ export default function Scan() {
 
     const handleError = (payload) => {
         if (payload.error === 'not_found') {
+            addToast('This barcode is not registered.', 'error');
             setModal({ variant: 'error', title: 'Staff not found', message: 'This barcode is not registered.' });
         } else if (payload.error === 'inactive') {
+            addToast('This employee is inactive.', 'error');
             setModal({ variant: 'error', title: 'Access denied', message: 'This employee is inactive.' });
+        } else if (payload.error === 'on_leave') {
+            addToast(payload.message, 'warning');
+            setModal({ variant: 'warn', title: 'On leave', message: payload.message });
         } else if (payload.error === 'debounce') {
+            addToast(payload.message, 'warning');
             setModal({ variant: 'warn', title: 'Please wait', message: payload.message });
         } else {
+            addToast(payload.message ?? 'Unable to process scan.', 'error');
             setModal({ variant: 'error', title: 'Scan error', message: payload.message ?? 'Unable to process scan.' });
         }
     };
@@ -111,8 +121,8 @@ export default function Scan() {
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.15),_transparent_55%)]" />
 
             <div className="relative z-10 max-w-3xl text-center">
-                <div className="mx-auto mb-4 h-16 w-16">
-                    <img src="/logo.svg" alt="Hogan Guards" className="h-full w-full" />
+                <div className="mx-auto mb-4 h-24 w-24 overflow-hidden rounded-xl">
+                    <img src="/logo.png" alt="Hogan Guards" className="h-full w-full object-contain" />
                 </div>
                 <p className="text-sm font-semibold uppercase tracking-[0.35em] text-hg-gold">Hogan Guards HQ</p>
                 <h1 className="mt-3 text-4xl font-black tracking-tight sm:text-5xl">Staff attendance</h1>

@@ -41,12 +41,12 @@ class StaffIdService
         return $code;
     }
 
-    public function generate(string $department, string $branch = 'HQ'): string
+    public function generate(string $department, string $branch = 'HQ', string $company = 'Hogan Guards'): string
     {
-        $company = config('hg.company_code', 'HGL');
+        $companyCode = $this->companyCode($company);
         $branchCode = $this->branchCode($branch);
         $deptCode = $this->departmentCode($department);
-        $prefix = "{$company}/{$branchCode}/{$deptCode}/";
+        $prefix = "{$companyCode}/{$branchCode}/{$deptCode}/";
 
         $max = 0;
         Staff::query()
@@ -59,6 +59,15 @@ class StaffIdService
             });
 
         return $prefix.str_pad((string) ($max + 1), 3, '0', STR_PAD_LEFT);
+    }
+
+    public function companyCode(string $company): string
+    {
+        $codes = \App\Models\Setting::getValue('company_codes');
+        $companyCodes = $codes ? json_decode($codes, true) : config('hg.company_codes', []);
+        $code = $companyCodes[$company] ?? $companyCodes[mb_strtoupper($company)] ?? config('hg.company_codes.Hogan Guards', 'HGL');
+
+        return strtoupper($code);
     }
 
     public function isValidFormat(string $staffId): bool

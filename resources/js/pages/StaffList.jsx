@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
 import { downloadStaffCodePng } from '../staffCodeDownload';
+import { useToast, ConfirmDialog } from '../components/Toast';
 
 const SORT_OPTIONS = [
     { value: 'full_name', label: 'Name (A-Z)' },
@@ -13,12 +14,14 @@ const SORT_OPTIONS = [
 ];
 
 export default function StaffList() {
+    const { addToast, removeToast } = useToast();
     const [rows, setRows] = useState([]);
     const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
     const [search, setSearch] = useState('');
     const [sort, setSort] = useState('full_name');
     const [departments, setDepartments] = useState([]);
     const [departmentFilter, setDepartmentFilter] = useState('');
+    const [confirmId, setConfirmId] = useState(null);
 
     useEffect(() => {
         api.get('/lookups/departments').then((r) => setDepartments(r.data));
@@ -44,18 +47,28 @@ export default function StaffList() {
     }, []);
 
     const deactivate = async (id) => {
-        if (!window.confirm('Deactivate this staff member?')) {
-            return;
+        setConfirmId(id);
+    };
+
+    const confirmDeactivate = async () => {
+        if (!confirmId) return;
+        try {
+            await api.delete(`/staff/${confirmId}`);
+            addToast('Staff deactivated successfully', 'success');
+            load(meta.current_page);
+        } catch {
+            addToast('Failed to deactivate staff', 'error');
+        } finally {
+            setConfirmId(null);
         }
-        await api.delete(`/staff/${id}`);
-        load(meta.current_page);
     };
 
     const downloadCode = async (staffPk, kind) => {
         try {
             await downloadStaffCodePng(staffPk, kind);
+            addToast('Code downloaded', 'success');
         } catch {
-            window.alert('Unable to download code image.');
+            addToast('Unable to download code image.', 'error');
         }
     };
 
@@ -82,10 +95,10 @@ export default function StaffList() {
             fd.append('file', file);
             try {
                 const res = await api.post('/staff/import', fd);
-                window.alert(`Imported ${res.data.imported} staff. Skipped ${res.data.skipped}.`);
+                addToast(`Imported ${res.data.imported} staff. Skipped ${res.data.skipped}.`, 'success');
                 load(meta.current_page);
             } catch (err) {
-                window.alert(err.response?.data?.message ?? 'Import failed');
+                addToast(err.response?.data?.message ?? 'Import failed', 'error');
             }
         };
         input.click();
@@ -138,6 +151,14 @@ export default function StaffList() {
             <div className="flex justify-end">
                 <button type="button" onClick={() => load(1)} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Apply</button>
             </div>
+
+            <ConfirmDialog
+                open={Boolean(confirmId)}
+                title="Deactivate staff"
+                message="Are you sure you want to deactivate this staff member?"
+                onConfirm={confirmDeactivate}
+                onCancel={() => setConfirmId(null)}
+            />
 
             <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <table className="min-w-full text-left text-sm">

@@ -32,6 +32,53 @@ class LookupController extends Controller
         return response()->json(json_decode($branches, true) ?: ['Lagos (HQ)', 'Abuja', 'Ibadan']);
     }
 
+    public function companies()
+    {
+        $companies = Setting::getValue('companies', json_encode(['Hogan Guards', 'Hogan Technology', 'Hogan Logistics', 'Hogan Cleaning', 'Hogan Maintenance', 'Hogan Security']));
+        
+        return response()->json(json_decode($companies, true) ?: ['Hogan Guards', 'Hogan Technology', 'Hogan Logistics', 'Hogan Cleaning', 'Hogan Maintenance', 'Hogan Security']);
+    }
+
+    public function updateCompanies(Request $request)
+    {
+        $data = $request->validate([
+            'companies' => ['required', 'array', 'min:1', 'max:20'],
+            'companies.*' => ['string', 'max:128', 'distinct'],
+        ]);
+
+        $existingCodes = config('hg.company_codes', []);
+        $prefixes = ['HGL', 'HTL', 'HLL', 'HCL', 'HMN', 'HSC', 'HTC', 'HFS', 'HHR', 'HIT'];
+        $codes = [];
+        $nextIndex = 0;
+
+        foreach ($data['companies'] as $name) {
+            if (isset($existingCodes[$name])) {
+                $codes[$name] = $existingCodes[$name];
+                continue;
+            }
+
+            $assigned = false;
+            foreach ($prefixes as $prefix) {
+                if (! in_array($prefix, $existingCodes, true) && ! in_array($prefix, $codes, true)) {
+                    $codes[$name] = $prefix;
+                    $assigned = true;
+                    break;
+                }
+            }
+
+            if (! $assigned) {
+                $codes[$name] = 'HC'.($nextIndex + 1);
+            }
+
+            $nextIndex++;
+        }
+
+        \App\Models\Setting::setValue('companies', json_encode($data['companies']));
+        \App\Models\Setting::setValue('company_codes', json_encode($codes));
+
+        return response()->json(['ok' => true, 'companies' => $data['companies']]);
+    }
+
     public function updateDepartments(Request $request)
     {
         $data = $request->validate([
@@ -41,11 +88,32 @@ class LookupController extends Controller
 
         \App\Models\Setting::setValue('departments', json_encode($data['departments']));
 
-        $codes = [];
+        $existingCodes = $this->staffIds->departmentCodes();
         $prefixes = ['OPS', 'SEC', 'ADM', 'FIN', 'MGT', 'BOD', 'HR', 'IT', 'LOG', 'SAL', 'ACC', 'MKT', 'CLN', 'DRV', 'WKR'];
-        foreach ($data['departments'] as $index => $name) {
-            $codes[$name] = strtoupper($prefixes[$index] ?? 'D'.($index + 1));
+        $nextIndex = 0;
+
+        foreach ($data['departments'] as $name) {
+            if (isset($existingCodes[$name])) {
+                continue;
+            }
+
+            $assigned = false;
+            foreach ($prefixes as $prefix) {
+                if (! in_array($prefix, $existingCodes, true) && ! in_array($prefix, array_values($codes ?? []), true)) {
+                    $codes[$name] = $prefix;
+                    $assigned = true;
+                    break;
+                }
+            }
+
+            if (! $assigned) {
+                $codes[$name] = 'D'.($nextIndex + 1);
+            }
+
+            $nextIndex++;
         }
+
+        $codes = array_merge($existingCodes, $codes ?? []);
         \App\Models\Setting::setValue('department_codes', json_encode($codes));
 
         return response()->json(['ok' => true, 'departments' => $data['departments']]);

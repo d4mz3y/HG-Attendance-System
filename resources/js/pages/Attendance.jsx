@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { usePaginatedTable } from '../hooks/usePaginatedTable';
+import Paginator from '../components/Paginator';
+import { useToast } from '../components/Toast';
 
 function todayISO() {
     return new Date().toISOString().slice(0, 10);
@@ -16,50 +19,25 @@ function toDatetimeLocal(iso) {
 }
 
 export default function Attendance() {
-    const [rows, setRows] = useState([]);
-    const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
     const [departments, setDepartments] = useState([]);
     const [staffOpts, setStaffOpts] = useState([]);
     const [editing, setEditing] = useState(null);
     const [editForm, setEditForm] = useState({ clock_in: '', clock_out: '', notes: '' });
     const [saving, setSaving] = useState(false);
-    const [filters, setFilters] = useState({
+
+    const { rows, meta, filters, loading, load, updateFilter } = usePaginatedTable('/attendances', {
         date_from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
         date_to: todayISO(),
         department: '',
         staff_pk: '',
         status: '',
     });
+    const { addToast } = useToast();
 
     useEffect(() => {
         api.get('/lookups/departments').then((r) => setDepartments(r.data));
         api.get('/lookups/staff').then((r) => setStaffOpts(r.data));
     }, []);
-
-    const load = (page = 1) => {
-        const params = {
-            page,
-            date_from: filters.date_from,
-            date_to: filters.date_to,
-            department: filters.department || undefined,
-            staff_pk: filters.staff_pk || undefined,
-            status: filters.status || undefined,
-        };
-        api.get('/attendances', { params }).then((r) => {
-            setRows(r.data.data);
-            setMeta({ current_page: r.data.current_page, last_page: r.data.last_page });
-        });
-    };
-
-    useEffect(() => {
-        load(1);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const change = (e) => {
-        const { name, value } = e.target;
-        setFilters((f) => ({ ...f, [name]: value }));
-    };
 
     const openEdit = (row) => {
         setEditing(row);
@@ -90,7 +68,7 @@ export default function Attendance() {
             load(meta.current_page);
         } catch (err) {
             const msg = err.response?.data?.message ?? 'Unable to save attendance';
-            window.alert(msg);
+            addToast(msg, 'error');
         } finally {
             setSaving(false);
         }
@@ -111,7 +89,7 @@ export default function Attendance() {
                         name="date_from"
                         className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
                         value={filters.date_from}
-                        onChange={change}
+                        onChange={(e) => updateFilter('date_from', e.target.value)}
                     />
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
@@ -121,7 +99,7 @@ export default function Attendance() {
                         name="date_to"
                         className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
                         value={filters.date_to}
-                        onChange={change}
+                        onChange={(e) => updateFilter('date_to', e.target.value)}
                     />
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
@@ -130,7 +108,7 @@ export default function Attendance() {
                         name="department"
                         className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
                         value={filters.department}
-                        onChange={change}
+                        onChange={(e) => updateFilter('department', e.target.value)}
                     >
                         <option value="">Any</option>
                         {departments.map((d) => (
@@ -146,7 +124,7 @@ export default function Attendance() {
                         name="staff_pk"
                         className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
                         value={filters.staff_pk}
-                        onChange={change}
+                        onChange={(e) => updateFilter('staff_pk', e.target.value)}
                     >
                         <option value="">Any</option>
                         {staffOpts.map((s) => (
@@ -162,7 +140,7 @@ export default function Attendance() {
                         name="status"
                         className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
                         value={filters.status}
-                        onChange={change}
+                        onChange={(e) => updateFilter('status', e.target.value)}
                     >
                         <option value="">All</option>
                         <option value="late">Late</option>
@@ -234,29 +212,7 @@ export default function Attendance() {
                 </table>
             </div>
 
-            <div className="flex items-center justify-between text-sm text-slate-600">
-                <span>
-                    Page {meta.current_page} of {meta.last_page}
-                </span>
-                <div className="flex gap-2">
-                    <button
-                        type="button"
-                        disabled={meta.current_page <= 1}
-                        className="rounded-lg border px-3 py-1 disabled:opacity-40"
-                        onClick={() => load(meta.current_page - 1)}
-                    >
-                        Previous
-                    </button>
-                    <button
-                        type="button"
-                        disabled={meta.current_page >= meta.last_page}
-                        className="rounded-lg border px-3 py-1 disabled:opacity-40"
-                        onClick={() => load(meta.current_page + 1)}
-                    >
-                        Next
-                    </button>
-                </div>
-            </div>
+            <Paginator meta={meta} onPage={load} />
 
             {editing && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

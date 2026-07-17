@@ -17,6 +17,18 @@ import Schedules from './pages/Schedules';
 import Organization from './pages/Organization';
 import PublicHolidays from './pages/PublicHolidays';
 import AuditLog from './pages/AuditLog';
+import { ToastContainer, useToast } from './components/Toast';
+
+function ToastProvider({ children }) {
+    const toast = useToast();
+
+    return (
+        <>
+            {children}
+            <ToastContainer toasts={toast.toasts} onRemove={toast.removeToast} />
+        </>
+    );
+}
 
 const router = createBrowserRouter([
     { path: '/', element: <Navigate to="/scan" replace /> },
@@ -43,6 +55,8 @@ const router = createBrowserRouter([
 
 createRoot(document.getElementById('app')).render(
     <React.StrictMode>
-        <RouterProvider router={router} />
+        <ToastProvider>
+            <RouterProvider router={router} />
+        </ToastProvider>
     </React.StrictMode>
 );

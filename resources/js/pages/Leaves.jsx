@@ -1,5 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { useToast } from '../components/Toast';
+
+function formatDate(value) {
+    if (!value) {
+        return '';
+    }
+    const date = new Date(value);
+    if (isNaN(date.getTime())) {
+        return value;
+    }
+    return date.toISOString().slice(0, 10);
+}
 
 const EMPTY = {
     staff_id: '',
@@ -11,6 +23,7 @@ const EMPTY = {
 };
 
 export default function Leaves() {
+    const { addToast } = useToast();
     const [rows, setRows] = useState([]);
     const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
     const [filters, setFilters] = useState({
@@ -68,8 +81,8 @@ export default function Leaves() {
         setEditing(row.id);
         setForm({
             staff_id: row.staff_id,
-            start_date: row.start_date,
-            end_date: row.end_date,
+            start_date: formatDate(row.start_date),
+            end_date: formatDate(row.end_date),
             type: row.type,
             reason: row.reason ?? '',
             status: row.status,
@@ -98,7 +111,7 @@ export default function Leaves() {
             load(meta.current_page);
         } catch (err) {
             const msg = err.response?.data?.message ?? 'Unable to save leave';
-            window.alert(msg);
+            addToast(msg, 'error');
         } finally {
             setSaving(false);
         }
@@ -171,8 +184,8 @@ export default function Leaves() {
                                     <div className="font-semibold text-slate-900">{r.staff?.full_name}</div>
                                     <div className="font-mono text-xs text-slate-500">{r.staff?.staff_id}</div>
                                 </td>
-                                <td className="px-3 py-2 whitespace-nowrap">{r.start_date}</td>
-                                <td className="px-3 py-2 whitespace-nowrap">{r.end_date}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">{formatDate(r.start_date)}</td>
+                                <td className="px-3 py-2 whitespace-nowrap">{formatDate(r.end_date)}</td>
                                 <td className="px-3 py-2">{r.type}</td>
                                 <td className="px-3 py-2 max-w-xs truncate">{r.reason}</td>
                                 <td className="px-3 py-2">

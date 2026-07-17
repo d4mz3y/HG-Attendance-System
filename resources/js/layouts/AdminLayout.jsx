@@ -48,7 +48,7 @@ export default function AdminLayout() {
             <aside className="border-b md:w-64 md:border-b-0 md:border-r md:min-h-screen border-slate-200 bg-white">
                 <div className="px-4 py-4 md:block">
                     <div className="flex items-center gap-3">
-                        <img src="/logo.svg" alt="Hogan Guards" className="h-8 w-8" />
+                        <img src="/logo.png" alt="Hogan Guards" className="h-12 w-12 rounded-lg object-contain" />
                         <div>
                             <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
                                 Hogan Guards

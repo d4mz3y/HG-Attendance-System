@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Attendance;
+use App\Models\Leave;
 use App\Models\Staff;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -42,8 +43,30 @@ class ReportRowsService
                     ->all();
 
                 foreach ($staffList as $staff) {
-                    if (! in_array($staff->id, $presentIds, true)) {
+                    if (in_array($staff->id, $presentIds, true)) {
+                        continue;
+                    }
+
+                    if ($this->isOnLeave($staff, $dateStr)) {
+                        $rows->push($this->onLeaveRow($staff, $dateStr));
+                    } else {
                         $rows->push($this->absentRow($staff, $dateStr));
+                    }
+                }
+                $cursor->addDay();
+            }
+
+            return $rows;
+        }
+
+        if ($status === 'on_leave') {
+            $cursor = $from->copy();
+            while ($cursor->lte($to)) {
+                $dateStr = $cursor->toDateString();
+
+                foreach ($staffList as $staff) {
+                    if ($this->isOnLeave($staff, $dateStr)) {
+                        $rows->push($this->onLeaveRow($staff, $dateStr));
                     }
                 }
                 $cursor->addDay();
@@ -83,6 +106,35 @@ class ReportRowsService
         }
 
         return $rows;
+    }
+
+    private function isOnLeave(Staff $staff, string $date): bool
+    {
+        return Leave::query()
+            ->where('staff_id', $staff->id)
+            ->where('start_date', '<=', $date)
+            ->where('end_date', '>=', $date)
+            ->whereIn('status', ['Pending', 'Approved'])
+            ->exists();
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function onLeaveRow(Staff $staff, string $date): array
+    {
+        return [
+            'full_name' => $staff->full_name,
+            'staff_code' => $staff->staff_id,
+            'department' => $staff->department,
+            'date' => $date,
+            'clock_in' => '—',
+            'clock_out' => '—',
+            'total_hours' => '—',
+            'late_minutes' => '—',
+            'overtime_minutes' => '—',
+            'status' => 'On Leave',
+        ];
     }
 
     /**

@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { usePaginatedTable } from '../hooks/usePaginatedTable';
+import Paginator from '../components/Paginator';
 
 function iso(d) {
     return d.toISOString().slice(0, 10);
@@ -28,51 +30,24 @@ function presets(which) {
 }
 
 export default function Reports() {
-    const [filters, setFilters] = useState({
+    const [departments, setDepartments] = useState([]);
+    const [staffOpts, setStaffOpts] = useState([]);
+
+    const { rows, meta, filters, load, updateFilter } = usePaginatedTable('/reports', {
         ...presets('month'),
         department: '',
         staff_pk: '',
         status: '',
     });
-    const [rows, setRows] = useState([]);
-    const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
-    const [departments, setDepartments] = useState([]);
-    const [staffOpts, setStaffOpts] = useState([]);
-    const [tab, setTab] = useState('attendance');
 
     useEffect(() => {
         api.get('/lookups/departments').then((r) => setDepartments(r.data));
         api.get('/lookups/staff').then((r) => setStaffOpts(r.data));
     }, []);
 
-    const load = (page = 1) => {
-        const params = {
-            page,
-            per_page: 25,
-            date_from: filters.date_from,
-            date_to: filters.date_to,
-            department: filters.department || undefined,
-            staff_pk: filters.staff_pk || undefined,
-            status: filters.status || undefined,
-        };
-        api.get('/reports', { params }).then((r) => {
-            setRows(r.data.data);
-            setMeta({ current_page: r.data.current_page, last_page: r.data.last_page });
-        });
-    };
-
-    useEffect(() => {
-        load(1);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    const change = (e) => {
-        const { name, value } = e.target;
-        setFilters((f) => ({ ...f, [name]: value }));
-    };
-
     const applyPreset = (key) => {
-        setFilters((f) => ({ ...f, ...presets(key) }));
+        updateFilter('date_from', presets(key).date_from);
+        updateFilter('date_to', presets(key).date_to);
     };
 
     const exportXlsx = async () => {
@@ -134,37 +109,38 @@ export default function Reports() {
             <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2 lg:grid-cols-6">
                 <label className="text-xs font-semibold text-slate-600">
                     From
-                    <input type="date" name="date_from" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.date_from} onChange={change} />
+                    <input type="date" name="date_from" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.date_from} onChange={(e) => updateFilter('date_from', e.target.value)} />
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
                     To
-                    <input type="date" name="date_to" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.date_to} onChange={change} />
+                    <input type="date" name="date_to" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.date_to} onChange={(e) => updateFilter('date_to', e.target.value)} />
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
                     Department
-                    <select name="department" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.department} onChange={change}>
+                    <select name="department" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.department} onChange={(e) => updateFilter('department', e.target.value)}>
                         <option value="">All</option>
                         {departments.map((d) => <option key={d} value={d}>{d}</option>)}
                     </select>
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
                     Staff
-                    <select name="staff_pk" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.staff_pk} onChange={change}>
+                    <select name="staff_pk" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.staff_pk} onChange={(e) => updateFilter('staff_pk', e.target.value)}>
                         <option value="">All</option>
                         {staffOpts.map((s) => <option key={s.id} value={s.id}>{s.full_name} ({s.staff_id})</option>)}
                     </select>
                 </label>
-                <label className="text-xs font-semibold text-slate-600">
-                    Status
-                    <select name="status" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.status} onChange={change}>
-                        <option value="">All</option>
-                        <option value="late">Late</option>
-                        <option value="on_time">On time</option>
-                        <option value="overtime">Overtime</option>
-                        <option value="absent">Absent</option>
-                        <option value="incomplete">Incomplete</option>
-                    </select>
-                </label>
+                    <label className="text-xs font-semibold text-slate-600">
+                        Status
+                        <select name="status" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.status} onChange={(e) => updateFilter('status', e.target.value)}>
+                            <option value="">All</option>
+                            <option value="late">Late</option>
+                            <option value="on_time">On time</option>
+                            <option value="overtime">Overtime</option>
+                            <option value="absent">Absent</option>
+                            <option value="on_leave">On Leave</option>
+                            <option value="incomplete">Incomplete</option>
+                        </select>
+                    </label>
                 <div className="flex items-end">
                     <button type="button" onClick={() => load(1)} className="w-full rounded-lg bg-slate-900 py-2 text-sm font-semibold text-white">Run report</button>
                 </div>
@@ -205,13 +181,7 @@ export default function Reports() {
                 </table>
             </div>
 
-            <div className="flex items-center justify-between text-sm text-slate-600">
-                <span>Page {meta.current_page} of {meta.last_page}</span>
-                <div className="flex gap-2">
-                    <button type="button" disabled={meta.current_page <= 1} className="rounded-lg border px-3 py-1 disabled:opacity-40" onClick={() => load(meta.current_page - 1)}>Previous</button>
-                    <button type="button" disabled={meta.current_page >= meta.last_page} className="rounded-lg border px-3 py-1 disabled:opacity-40" onClick={() => load(meta.current_page + 1)}>Next</button>
-                </div>
-            </div>
+            <Paginator meta={meta} onPage={load} />
         </div>
     );
 }

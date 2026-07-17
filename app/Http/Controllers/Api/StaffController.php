@@ -21,12 +21,14 @@ class StaffController extends Controller
         $data = $request->validate([
             'department' => ['required', 'string', 'in:'.implode(',', $this->staffIds->departments())],
             'branch' => ['nullable', 'string', 'max:64'],
+            'company' => ['nullable', 'string', 'max:128'],
         ]);
 
         return response()->json([
             'staff_id' => $this->staffIds->generate(
                 $data['department'],
-                $data['branch'] ?? 'HQ'
+                $data['branch'] ?? 'HQ',
+                $data['company'] ?? 'Hogan Guards'
             ),
         ]);
     }
@@ -127,6 +129,7 @@ class StaffController extends Controller
             'file' => ['required', 'file', 'mimes:csv,txt', 'max:4096'],
             'department' => ['nullable', 'string', 'max:128'],
             'branch' => ['nullable', 'string', 'max:64'],
+            'company' => ['nullable', 'string', 'max:128'],
         ]);
 
         if ($validator->fails()) {
@@ -144,6 +147,7 @@ class StaffController extends Controller
         $departments = $this->staffIds->departments();
         $defaultDept = $request->string('department')->toString() ?: ($departments[0] ?? 'Operations');
         $defaultBranch = $request->string('branch')->toString() ?: 'HQ';
+        $defaultCompany = $request->string('company')->toString() ?: 'Hogan Guards';
 
         while (($row = fgetcsv($handle)) !== false) {
             $data = array_combine($lowerHeaders, $row);
@@ -155,6 +159,7 @@ class StaffController extends Controller
 
             $staffId = trim($data['staff_id']);
             $fullName = trim($data['full_name']);
+            $company = trim($data['company'] ?? $defaultCompany);
             $department = trim($data['department'] ?? $defaultDept);
             $jobTitle = trim($data['job_title'] ?? '');
             $branch = trim($data['branch'] ?? $defaultBranch);
@@ -174,6 +179,7 @@ class StaffController extends Controller
                 Staff::query()->updateOrCreate(
                     ['staff_id' => $staffId],
                     [
+                        'company' => $company,
                         'full_name' => $fullName,
                         'department' => $department,
                         'job_title' => $jobTitle ?: null,
@@ -204,6 +210,7 @@ class StaffController extends Controller
 
         return $request->validate([
             'staff_id' => ['required', 'string', 'max:32', 'regex:'.$pattern, $unique],
+            'company' => ['nullable', 'string', 'max:128'],
             'full_name' => ['required', 'string', 'max:255'],
             'department' => ['required', 'string', 'in:'.implode(',', $this->staffIds->departments())],
             'job_title' => ['nullable', 'string', 'max:128'],

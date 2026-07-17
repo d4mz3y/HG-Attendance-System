@@ -3,6 +3,15 @@
 return [
   'company_code' => 'HGL',
 
+  'company_codes' => [
+    'Hogan Guards' => 'HGL',
+    'Hogan Technology' => 'HTL',
+    'Hogan Logistics' => 'HLL',
+    'Hogan Cleaning' => 'HCL',
+    'Hogan Maintenance' => 'HMN',
+    'Hogan Security' => 'HSC',
+  ],
+
   'default_branch_code' => 'LA',
 
   'branch_codes' => [
@@ -29,5 +38,5 @@ return [
     'Security' => 'SEC',
   ],
 
-  'staff_id_pattern' => '/^(HGL\/[A-Z]{2}\/[A-Z]{2,4}\/\d{3}|HG-[A-Z0-9-]+)$/',
+  'staff_id_pattern' => '/^([A-Z]{2,4})\/([A-Z]{2})\/([A-Z]{2,4})\/(\d{3})$/',
 ];

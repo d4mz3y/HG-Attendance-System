@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Navigate } from 'react-router-dom';
 import api from '../api';
+import { useToast } from '../components/Toast';
 
 export default function Login() {
     const navigate = useNavigate();
@@ -9,6 +10,7 @@ export default function Login() {
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
     const [remember, setRemember] = useState(() => localStorage.getItem('hg_remember') === '1');
+    const { addToast } = useToast();
 
     if (localStorage.getItem('hg_token')) {
         return <Navigate to="/dashboard" replace />;
@@ -35,6 +37,7 @@ export default function Login() {
                 d?.message ??
                 'Login failed';
             setError(msg);
+            addToast(msg, 'error');
         } finally {
             setLoading(false);
         }
@@ -60,7 +63,7 @@ export default function Login() {
                 className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-sm"
             >
                 <div className="flex flex-col items-center">
-                    <img src="/logo.svg" alt="Hogan Guards" className="mb-4 h-12 w-12" />
+                    <img src="/logo.png" alt="Hogan Guards" className="mb-4 h-16 w-16 rounded-lg object-contain" />
                     <h1 className="text-2xl font-bold text-slate-900">Admin sign in</h1>
                     <p className="mt-1 text-sm text-slate-500">Hogan Guards attendance console</p>
                 </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { useToast, ConfirmDialog } from '../components/Toast';
 
 export default function PublicHolidays() {
     const [holidays, setHolidays] = useState([]);
@@ -7,6 +8,8 @@ export default function PublicHolidays() {
     const [editing, setEditing] = useState(null);
     const [saving, setSaving] = useState(false);
     const [year, setYear] = useState(new Date().getFullYear());
+    const { addToast } = useToast();
+    const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: () => {} });
 
     const load = () => {
         api.get('/public-holidays', { params: { year } }).then((r) => setHolidays(r.data));
@@ -53,16 +56,17 @@ export default function PublicHolidays() {
             closeEdit();
             load();
         } catch (err) {
-            window.alert(err.response?.data?.message ?? 'Unable to save holiday');
+            addToast(err.response?.data?.message ?? 'Unable to save holiday', 'error');
         } finally {
             setSaving(false);
         }
     };
 
     const remove = async (id) => {
-        if (!window.confirm('Remove this holiday?')) return;
-        await api.delete(`/public-holidays/${id}`);
-        load();
+        setConfirmState({ open: true, title: 'Confirm', message: 'Remove this holiday?', onConfirm: async () => {
+            await api.delete(`/public-holidays/${id}`);
+            load();
+        }});
     };
 
     return (
@@ -138,6 +142,7 @@ export default function PublicHolidays() {
                     </form>
                 </div>
             )}
+            <ConfirmDialog open={confirmState.open} title={confirmState.title} message={confirmState.message} onConfirm={confirmState.onConfirm} onCancel={() => setConfirmState({ ...confirmState, open: false })} />
         </div>
     );
 }

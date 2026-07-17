@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
 import { downloadStaffCodePng } from '../staffCodeDownload';
+import { useToast } from '../components/Toast';
 
 const empty = {
     staff_id: '',
+    company: 'Hogan Guards',
     full_name: '',
     department: 'Operations',
     job_title: '',
@@ -19,13 +21,16 @@ export default function StaffForm() {
     const [form, setForm] = useState(empty);
     const [departments, setDepartments] = useState([]);
     const [branches, setBranches] = useState([]);
+    const [companies, setCompanies] = useState([]);
     const [photo, setPhoto] = useState(null);
     const [loading, setLoading] = useState(false);
     const [createdStaff, setCreatedStaff] = useState(null);
+    const { addToast } = useToast();
 
     useEffect(() => {
         api.get('/lookups/departments').then((r) => setDepartments(r.data));
         api.get('/lookups/branches').then((r) => setBranches(r.data));
+        api.get('/lookups/companies').then((r) => setCompanies(r.data));
     }, []);
 
     useEffect(() => {
@@ -42,6 +47,7 @@ export default function StaffForm() {
             const s = r.data;
             setForm({
                 staff_id: s.staff_id,
+                company: s.company ?? 'Hogan Guards',
                 full_name: s.full_name,
                 department: s.department,
                 job_title: s.job_title ?? '',
@@ -55,10 +61,10 @@ export default function StaffForm() {
         if (isEdit || createdStaff) {
             return;
         }
-        api.get('/staff/next-id', { params: { department: form.department, branch: form.branch } })
+        api.get('/staff/next-id', { params: { department: form.department, branch: form.branch, company: form.company } })
             .then((r) => setForm((f) => ({ ...f, staff_id: r.data.staff_id })))
             .catch(() => {});
-    }, [form.department, form.branch, isEdit, createdStaff]);
+    }, [form.department, form.branch, form.company, isEdit, createdStaff]);
 
     const change = (e) => {
         const { name, value } = e.target;
@@ -67,7 +73,7 @@ export default function StaffForm() {
 
     const regenerateId = async () => {
         const { data } = await api.get('/staff/next-id', {
-            params: { department: form.department, branch: form.branch },
+            params: { department: form.department, branch: form.branch, company: form.company },
         });
         setForm((f) => ({ ...f, staff_id: data.staff_id }));
     };
@@ -90,7 +96,7 @@ export default function StaffForm() {
             }
         } catch (err) {
             const msg = err.response?.data?.message ?? 'Unable to save staff';
-            window.alert(msg);
+            addToast(msg, 'error');
         } finally {
             setLoading(false);
         }
@@ -100,7 +106,7 @@ export default function StaffForm() {
         try {
             await downloadStaffCodePng(staffPk, kind);
         } catch {
-            window.alert('Unable to download code image.');
+            addToast('Unable to download code image.', 'error');
         }
     };
 
@@ -168,6 +174,20 @@ export default function StaffForm() {
 
             <form onSubmit={submit} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                 <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm font-medium text-slate-700">
+                        Company
+                        <select
+                            name="company"
+                            className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
+                            value={form.company}
+                            onChange={change}
+                        >
+                            {companies.map((c) => (
+                                <option key={c} value={c}>{c}</option>
+                            ))}
+                        </select>
+                    </label>
+
                     <label className="block text-sm font-medium text-slate-700">
                         Department
                         <select

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Attendance;
+use App\Models\Leave;
 use App\Models\Staff;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Cache;
@@ -39,6 +40,14 @@ class ScanService
                 'ok' => false,
                 'error' => 'inactive',
                 'message' => 'Access denied',
+            ];
+        }
+
+        if ($this->isOnLeave($staff)) {
+            return [
+                'ok' => false,
+                'error' => 'on_leave',
+                'message' => 'Staff is currently on approved leave. Clock-in is blocked.',
             ];
         }
 
@@ -107,6 +116,18 @@ class ScanService
 
             return $this->successPayload($staff, 'in', $now, $row);
         });
+    }
+
+    private function isOnLeave(Staff $staff): bool
+    {
+        $today = Carbon::today();
+
+        return Leave::query()
+            ->where('staff_id', $staff->id)
+            ->where('start_date', '<=', $today)
+            ->where('end_date', '>=', $today)
+            ->whereIn('status', ['Pending', 'Approved'])
+            ->exists();
     }
 
     /**

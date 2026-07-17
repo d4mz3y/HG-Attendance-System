@@ -67,8 +67,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/lookups/departments', [LookupController::class, 'departments']);
     Route::get('/lookups/staff', [LookupController::class, 'staffOptions']);
     Route::get('/lookups/branches', [LookupController::class, 'branches']);
+    Route::get('/lookups/companies', [LookupController::class, 'companies']);
     Route::put('/lookups/departments', [LookupController::class, 'updateDepartments']);
     Route::put('/lookups/branches', [LookupController::class, 'updateBranches']);
+    Route::put('/lookups/companies', [LookupController::class, 'updateCompanies']);
 
     Route::get('/reports', [ReportController::class, 'index']);
     Route::post('/reports/export', [ReportController::class, 'export']);

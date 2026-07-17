@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import { useToast } from '../components/Toast';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -21,6 +22,7 @@ export default function Schedules() {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(false);
     const [mode, setMode] = useState('staff');
+    const { addToast } = useToast();
 
     useEffect(() => {
         api.get('/lookups/departments').then((r) => setDepartments(r.data));
@@ -80,7 +82,7 @@ export default function Schedules() {
             loadSchedules(targetId, mode);
             setForm(EMPTY_SCHEDULE);
         } catch (err) {
-            window.alert(err.response?.data?.message ?? 'Unable to save schedule');
+            addToast(err.response?.data?.message ?? 'Unable to save schedule', 'error');
         } finally {
             setSaving(false);
         }
@@ -114,7 +116,7 @@ export default function Schedules() {
             await api.put(endpoint, { schedules: items });
             loadSchedules(targetId, mode);
         } catch (err) {
-            window.alert(err.response?.data?.message ?? 'Unable to save schedule');
+            addToast(err.response?.data?.message ?? 'Unable to save schedule', 'error');
         } finally {
             setSaving(false);
         }

@@ -42,9 +42,17 @@ class AlertService
             ->pluck('staff_id')
             ->all();
 
+        $dayOffIds = Staff::query()
+            ->where('employment_status', 'Active')
+            ->get()
+            ->filter(fn ($s) => app(ScheduleService::class)->effectiveShift($s, $today)['is_day_off'])
+            ->pluck('id')
+            ->all();
+
         return Staff::query()
             ->where('employment_status', 'Active')
             ->whereNotIn('id', $presentIds)
+            ->whereNotIn('id', $dayOffIds)
             ->get()
             ->map(fn ($s) => [
                 'id' => $s->id,

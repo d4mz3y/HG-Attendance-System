@@ -27,6 +27,7 @@ class ScheduleController extends Controller
             'schedules.*.shift_end' => ['nullable', 'date_format:H:i', 'after:schedules.*.shift_start'],
             'schedules.*.break_minutes' => ['nullable', 'integer', 'min:0', 'max:480'],
             'schedules.*.is_day_off' => ['boolean'],
+            'schedules.*.works_on_public_holiday' => ['boolean'],
         ]);
 
         $this->schedules->upsert($staff->id, $data['schedules']);

@@ -52,10 +52,11 @@ class ScheduleService
                 'id' => $s->id,
                 'day_of_week' => (int) $s->day_of_week,
                 'day_name' => Carbon::create(2024, 1, 7 + (int) $s->day_of_week)->format('l'),
-                'shift_start' => $s->shift_start,
-                'shift_end' => $s->shift_end,
+                'shift_start' => $s->shift_start ? $s->shift_start->format('H:i') : null,
+                'shift_end' => $s->shift_end ? $s->shift_end->format('H:i') : null,
                 'break_minutes' => (int) $s->break_minutes,
                 'is_day_off' => (bool) $s->is_day_off,
+                'works_on_public_holiday' => (bool) ($s->works_on_public_holiday ?? false),
             ])
             ->all();
     }
@@ -73,6 +74,7 @@ class ScheduleService
                     'shift_end' => $item['shift_end'] ?? null,
                     'break_minutes' => (int) ($item['break_minutes'] ?? 60),
                     'is_day_off' => (bool) ($item['is_day_off'] ?? false),
+                    'works_on_public_holiday' => (bool) ($item['works_on_public_holiday'] ?? false),
                 ]
             );
         }

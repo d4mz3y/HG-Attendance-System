@@ -113,7 +113,7 @@ class ReportController extends Controller
             'date_to' => ['required', 'date', 'after_or_equal:date_from'],
             'department' => ['nullable', 'string', 'max:128'],
             'staff_pk' => ['nullable', 'integer'],
-            'status' => ['nullable', 'in:late,on_time,overtime,absent,incomplete'],
+            'status' => ['nullable', 'in:late,on_time,overtime,absent,incomplete,day_off,public_holiday_work,on_leave'],
         ]);
 
         return [

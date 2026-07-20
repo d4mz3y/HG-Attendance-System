@@ -165,6 +165,8 @@ export default function Organization() {
                 </ul>
                 <form onSubmit={addCompany} className="mt-4 flex gap-2">
                     <input
+                        id="new_company"
+                        name="new_company"
                         className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
                         placeholder="New company name"
                         value={newCompany}
@@ -187,6 +189,8 @@ export default function Organization() {
                 </ul>
                 <form onSubmit={addDepartment} className="mt-4 flex gap-2">
                     <input
+                        id="new_department"
+                        name="new_department"
                         className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
                         placeholder="New department name"
                         value={newDept}
@@ -209,6 +213,8 @@ export default function Organization() {
                 </ul>
                 <form onSubmit={addBranch} className="mt-4 flex gap-2">
                     <input
+                        id="new_branch"
+                        name="new_branch"
                         className="flex-1 rounded-lg border border-slate-300 px-3 py-2 text-sm"
                         placeholder="New branch name"
                         value={newBranch}

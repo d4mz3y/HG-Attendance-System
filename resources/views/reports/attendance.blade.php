@@ -33,11 +33,15 @@
                 <th>Hours</th>
                 <th>Late</th>
                 <th>OT</th>
+                <th>Notes</th>
                 <th>Status</th>
             </tr>
         </thead>
         <tbody>
             @foreach($rows as $row)
+                @if($row['status'] === 'Public Holiday Work')
+                    @continue
+                @endif
                 <tr>
                     <td>{{ $row['full_name'] }}</td>
                     <td>{{ $row['staff_code'] }}</td>
@@ -48,10 +52,52 @@
                     <td>{{ $row['total_hours'] }}</td>
                     <td>{{ $row['late_minutes'] }}</td>
                     <td>{{ $row['overtime_minutes'] }}</td>
+                    <td>{{ $row['notes'] ?? '' }}</td>
                     <td>{{ $row['status'] }}</td>
                 </tr>
             @endforeach
         </tbody>
     </table>
+
+    @php
+        $publicHolidayRows = $rows->filter(fn($r) => $r['status'] === 'Public Holiday Work');
+    @endphp
+    @if($publicHolidayRows->isNotEmpty())
+        <h2 style="margin-top: 24px; font-size: 16px;">Public Holiday Work Records</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Staff ID</th>
+                    <th>Department</th>
+                    <th>Date</th>
+                    <th>In</th>
+                    <th>Out</th>
+                    <th>Hours</th>
+                    <th>Late</th>
+                    <th>OT</th>
+                    <th>Notes</th>
+                    <th>Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach($publicHolidayRows as $row)
+                    <tr>
+                        <td>{{ $row['full_name'] }}</td>
+                        <td>{{ $row['staff_code'] }}</td>
+                        <td>{{ $row['department'] }}</td>
+                        <td>{{ $row['date'] }}</td>
+                        <td>{{ $row['clock_in'] }}</td>
+                        <td>{{ $row['clock_out'] }}</td>
+                        <td>{{ $row['total_hours'] }}</td>
+                        <td>{{ $row['late_minutes'] }}</td>
+                        <td>{{ $row['overtime_minutes'] }}</td>
+                        <td>{{ $row['notes'] ?? '' }}</td>
+                        <td>{{ $row['status'] }}</td>
+                    </tr>
+                @endforeach
+            </tbody>
+        </table>
+    @endif
 </body>
 </html>

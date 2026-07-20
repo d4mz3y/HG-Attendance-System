@@ -20,4 +20,9 @@ class PublicHoliday extends Model
             'is_recurring' => 'boolean',
         ];
     }
+
+    protected function serializeDate(\DateTimeInterface $date): string
+    {
+        return $date->format('Y-m-d');
+    }
 }

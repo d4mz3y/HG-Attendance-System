@@ -35,4 +35,13 @@ class Attendance extends Model
     {
         return $this->belongsTo(Staff::class, 'staff_id');
     }
+
+    public function toArray(): array
+    {
+        $array = parent::toArray();
+        if ($this->date instanceof \DateTimeInterface) {
+            $array['date'] = $this->date->format('Y-m-d');
+        }
+        return $array;
+    }
 }

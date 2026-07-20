@@ -122,6 +122,88 @@ class AttendanceController extends Controller
         return response()->json($attendance->fresh()->load('staff'));
     }
 
+    public function storeManual(Request $request)
+    {
+        $data = $request->validate([
+            'staff_id' => ['required', 'integer', 'exists:staff,id'],
+            'date' => ['required', 'date'],
+            'clock_in' => ['nullable', 'date'],
+            'clock_out' => ['nullable', 'date', 'after:clock_in'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'break_minutes' => ['nullable', 'integer', 'min:0', 'max:480'],
+        ]);
+
+        $staff = \App\Models\Staff::findOrFail($data['staff_id']);
+
+        $attendance = Attendance::query()
+            ->where('staff_id', $staff->id)
+            ->whereDate('date', $data['date'])
+            ->first();
+
+        $clockIn = isset($data['clock_in']) && $data['clock_in'] ? \Carbon\Carbon::parse($data['clock_in']) : \Carbon\Carbon::parse($data['date'].' 08:00:00');
+        $clockOut = isset($data['clock_out']) && $data['clock_out'] ? \Carbon\Carbon::parse($data['clock_out']) : null;
+
+        if ($attendance) {
+            $attendance->clock_in = $clockIn;
+            $attendance->clock_out = $clockOut;
+            $attendance->notes = $data['notes'] ?? $attendance->notes;
+            $attendance->break_minutes = (int) ($data['break_minutes'] ?? $attendance->break_minutes);
+            $attendance->date = $data['date'];
+
+            $this->rules->applyClockInRules($attendance);
+
+            if ($clockOut) {
+                $this->rules->applyClockOutRules($attendance);
+            } else {
+                $attendance->total_hours = null;
+                $attendance->overtime_minutes = 0;
+            }
+
+            $attendance->save();
+
+            $this->audits->log(
+                $attendance,
+                ['manual_override'],
+                [],
+                ['updated_manually' => true],
+                $request->user()->id,
+                $request->ip(),
+                $data['notes'] ?? 'Manual override by admin'
+            );
+
+            return response()->json($attendance->fresh()->load('staff'));
+        }
+
+        $attendance = new Attendance([
+            'staff_id' => $staff->id,
+            'date' => $data['date'],
+            'clock_in' => $clockIn,
+            'clock_out' => $clockOut,
+            'notes' => $data['notes'] ?? null,
+            'break_minutes' => (int) ($data['break_minutes'] ?? 0),
+        ]);
+
+        $this->rules->applyClockInRules($attendance);
+
+        if ($clockOut) {
+            $this->rules->applyClockOutRules($attendance);
+        }
+
+        $attendance->save();
+
+        $this->audits->log(
+            $attendance,
+            ['manual_override'],
+            [],
+            ['created_manually' => true],
+            $request->user()->id,
+            $request->ip(),
+            $data['notes'] ?? 'Manual override by admin'
+        );
+
+        return response()->json($attendance->fresh()->load('staff'));
+    }
+
     protected function applyStatusFilter($q, string $status)
     {
         return match ($status) {

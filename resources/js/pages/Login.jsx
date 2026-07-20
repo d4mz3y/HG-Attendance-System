@@ -75,6 +75,8 @@ export default function Login() {
                 <label className="mt-6 block text-sm font-medium text-slate-700">
                     Username
                     <input
+                        id="username"
+                        name="username"
                         className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
                         value={username}
                         onChange={(e) => setUsername(e.target.value)}
@@ -86,6 +88,8 @@ export default function Login() {
                 <label className="mt-4 block text-sm font-medium text-slate-700">
                     Password
                     <input
+                        id="password"
+                        name="password"
                         type="password"
                         className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
                         value={password}
@@ -96,7 +100,7 @@ export default function Login() {
                 </label>
 
                 <label className="mt-4 flex items-center gap-2 text-sm font-medium text-slate-700">
-                    <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
+                    <input id="remember" name="remember" type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
                     Remember me
                 </label>
 

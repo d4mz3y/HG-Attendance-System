@@ -137,8 +137,10 @@ export default function Reports() {
                             <option value="on_time">On time</option>
                             <option value="overtime">Overtime</option>
                             <option value="absent">Absent</option>
+                            <option value="day_off">Day Off</option>
                             <option value="on_leave">On Leave</option>
                             <option value="incomplete">Incomplete</option>
+                            <option value="public_holiday_work">Public Holiday Work</option>
                         </select>
                     </label>
                 <div className="flex items-end">
@@ -148,36 +150,38 @@ export default function Reports() {
 
             <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <table className="min-w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
-                        <tr>
-                            <th className="px-3 py-2">Name</th>
-                            <th className="px-3 py-2">Staff ID</th>
-                            <th className="px-3 py-2">Dept</th>
-                            <th className="px-3 py-2">Date</th>
-                            <th className="px-3 py-2">In</th>
-                            <th className="px-3 py-2">Out</th>
-                            <th className="px-3 py-2">Hours</th>
-                            <th className="px-3 py-2">Late</th>
-                            <th className="px-3 py-2">OT</th>
-                            <th className="px-3 py-2">Status</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                        {rows.map((r, idx) => (
-                            <tr key={`${r.staff_code}-${r.date}-${idx}`} className="hover:bg-slate-50">
-                                <td className="px-3 py-2 font-semibold text-slate-900">{r.full_name}</td>
-                                <td className="px-3 py-2 font-mono text-xs">{r.staff_code}</td>
-                                <td className="px-3 py-2">{r.department}</td>
-                                <td className="px-3 py-2 whitespace-nowrap">{r.date}</td>
-                                <td className="px-3 py-2">{r.clock_in}</td>
-                                <td className="px-3 py-2">{r.clock_out}</td>
-                                <td className="px-3 py-2">{r.total_hours}</td>
-                                <td className="px-3 py-2">{r.late_minutes}</td>
-                                <td className="px-3 py-2">{r.overtime_minutes}</td>
-                                <td className="px-3 py-2">{r.status}</td>
-                            </tr>
-                        ))}
-                    </tbody>
+                            <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
+                                <tr>
+                                    <th className="px-3 py-2">Name</th>
+                                    <th className="px-3 py-2">Staff ID</th>
+                                    <th className="px-3 py-2">Dept</th>
+                                    <th className="px-3 py-2">Date</th>
+                                    <th className="px-3 py-2">In</th>
+                                    <th className="px-3 py-2">Out</th>
+                                    <th className="px-3 py-2">Hours</th>
+                                    <th className="px-3 py-2">Late</th>
+                                    <th className="px-3 py-2">OT</th>
+                                    <th className="px-3 py-2">Notes</th>
+                                    <th className="px-3 py-2">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {rows.map((r, idx) => (
+                                    <tr key={`${r.staff_code}-${r.date}-${idx}`} className="hover:bg-slate-50">
+                                        <td className="px-3 py-2 font-semibold text-slate-900">{r.full_name}</td>
+                                        <td className="px-3 py-2 font-mono text-xs">{r.staff_code}</td>
+                                        <td className="px-3 py-2">{r.department}</td>
+                                        <td className="px-3 py-2 whitespace-nowrap">{r.date}</td>
+                                        <td className="px-3 py-2">{r.clock_in}</td>
+                                        <td className="px-3 py-2">{r.clock_out}</td>
+                                        <td className="px-3 py-2">{r.total_hours}</td>
+                                        <td className="px-3 py-2">{r.late_minutes}</td>
+                                        <td className="px-3 py-2">{r.overtime_minutes}</td>
+                                        <td className="px-3 py-2">{r.notes}</td>
+                                        <td className="px-3 py-2">{r.status}</td>
+                                    </tr>
+                                ))}
+                            </tbody>
                 </table>
             </div>
 

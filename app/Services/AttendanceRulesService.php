@@ -3,8 +3,9 @@
 namespace App\Services;
 
 use App\Models\Attendance;
-use App\Models\Staff;
 use App\Models\PublicHoliday;
+use App\Models\Setting;
+use App\Models\Staff;
 use Carbon\Carbon;
 
 class AttendanceRulesService

@@ -177,6 +177,7 @@ export default function StaffForm() {
                     <label className="block text-sm font-medium text-slate-700">
                         Company
                         <select
+                            id="company"
                             name="company"
                             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
                             value={form.company}
@@ -191,6 +192,7 @@ export default function StaffForm() {
                     <label className="block text-sm font-medium text-slate-700">
                         Department
                         <select
+                            id="department"
                             name="department"
                             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
                             value={form.department}
@@ -207,6 +209,7 @@ export default function StaffForm() {
                     <label className="block text-sm font-medium text-slate-700">
                         Branch
                         <select
+                            id="branch"
                             name="branch"
                             className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
                             value={form.branch}
@@ -223,6 +226,7 @@ export default function StaffForm() {
                     Staff ID (barcode / QR)
                     <div className="mt-1 flex gap-2">
                         <input
+                            id="staff_id"
                             name="staff_id"
                             className="w-full rounded-lg border border-slate-300 px-3 py-2 font-mono text-sm"
                             value={form.staff_id}
@@ -244,6 +248,7 @@ export default function StaffForm() {
                 <label className="block text-sm font-medium text-slate-700">
                     Full name
                     <input
+                        id="full_name"
                         name="full_name"
                         className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
                         value={form.full_name}
@@ -255,6 +260,7 @@ export default function StaffForm() {
                 <label className="block text-sm font-medium text-slate-700">
                     Job title
                     <input
+                        id="job_title"
                         name="job_title"
                         className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
                         value={form.job_title}
@@ -265,6 +271,7 @@ export default function StaffForm() {
                 <label className="block text-sm font-medium text-slate-700">
                     Employment status
                     <select
+                        id="employment_status"
                         name="employment_status"
                         className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
                         value={form.employment_status}
@@ -279,6 +286,8 @@ export default function StaffForm() {
                     Photo
                     <div className="mt-1 flex items-center gap-3">
                         <input
+                            id="photo"
+                            name="photo"
                             type="file"
                             accept="image/*"
                             className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-900 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-slate-800"

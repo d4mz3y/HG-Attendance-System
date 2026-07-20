@@ -18,7 +18,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithTitle,
 
     public function collection(): Collection
     {
-        return $this->rows->map(fn (array $r) => [
+        $mainRows = $this->rows->map(fn (array $r) => [
             $r['full_name'],
             $r['staff_code'],
             $r['department'],
@@ -28,8 +28,35 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithTitle,
             $r['total_hours'],
             $r['late_minutes'],
             $r['overtime_minutes'],
+            $r['notes'] ?? '',
             $r['status'],
         ]);
+
+        $publicHolidayRows = $this->rows
+            ->filter(fn (array $r) => $r['status'] === 'Public Holiday Work')
+            ->map(fn (array $r) => [
+                $r['full_name'],
+                $r['staff_code'],
+                $r['department'],
+                $r['date'],
+                $r['clock_in'],
+                $r['clock_out'],
+                $r['total_hours'],
+                $r['late_minutes'],
+                $r['overtime_minutes'],
+                $r['notes'] ?? '',
+                $r['status'],
+            ]);
+
+        if ($publicHolidayRows->isNotEmpty()) {
+            $mainRows = $mainRows->concat([
+                [],
+                ['PUBLIC HOLIDAY WORK RECORDS'],
+                ['Full Name', 'Staff ID', 'Department', 'Date', 'Clock In', 'Clock Out', 'Total Hours', 'Late (minutes)', 'Overtime (minutes)', 'Notes', 'Status'],
+            ])->concat($publicHolidayRows);
+        }
+
+        return $mainRows;
     }
 
     public function headings(): array
@@ -44,6 +71,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithTitle,
             'Total Hours Worked',
             'Late (minutes)',
             'Overtime (minutes)',
+            'Notes',
             'Status',
         ];
     }
@@ -69,7 +97,7 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithTitle,
         ];
 
         for ($row = 2; $row <= $highestRow; $row++) {
-            $statusCell = 'J' . $row;
+            $statusCell = 'K' . $row;
             $statusValue = $sheet->getCell($statusCell)->getValue();
 
             $rowStyles = [];
@@ -97,6 +125,16 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithTitle,
                 $rowStyles['fill'] = [
                     'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
                     'startColor' => ['rgb' => 'E5E7EB'],
+                ];
+            } elseif ($statusValue === 'Day Off') {
+                $rowStyles['fill'] = [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => 'F3E8FF'],
+                ];
+            } elseif ($statusValue === 'Public Holiday Work') {
+                $rowStyles['fill'] = [
+                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => 'FFFBEB'],
                 ];
             }
 

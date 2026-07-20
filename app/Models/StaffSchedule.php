@@ -16,6 +16,7 @@ class StaffSchedule extends Model
         'shift_end',
         'break_minutes',
         'is_day_off',
+        'works_on_public_holiday',
     ];
 
     protected function casts(): array
@@ -24,6 +25,7 @@ class StaffSchedule extends Model
             'shift_start' => 'datetime:H:i',
             'shift_end' => 'datetime:H:i',
             'is_day_off' => 'boolean',
+            'works_on_public_holiday' => 'boolean',
         ];
     }
 

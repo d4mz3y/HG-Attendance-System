@@ -136,7 +136,6 @@ export default function Scan() {
                 onKeyDown={onKeyDown}
                 onBlur={focusInput}
                 className="absolute left-0 top-0 h-px w-px opacity-0"
-                aria-hidden
                 autoComplete="off"
             />
 

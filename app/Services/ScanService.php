@@ -13,7 +13,8 @@ class ScanService
 {
     public function __construct(
         protected AppConfigService $config,
-        protected AttendanceRulesService $rules
+        protected AttendanceRulesService $rules,
+        protected ScheduleService $schedules
     ) {}
 
     /**
@@ -97,6 +98,7 @@ class ScanService
                 ->first();
 
             $now = now();
+            $isDayOff = $this->schedules->effectiveShift($staff, $today)['is_day_off'] ?? false;
 
             if ($open) {
                 $open->clock_out = $now;
@@ -112,6 +114,12 @@ class ScanService
                 'clock_in' => $now,
             ]);
             $this->rules->applyClockInRules($row);
+
+            if ($isDayOff) {
+                $row->is_late = false;
+                $row->late_minutes = 0;
+            }
+
             $row->save();
 
             return $this->successPayload($staff, 'in', $now, $row);

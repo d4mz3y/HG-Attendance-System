@@ -64,58 +64,58 @@ export default function Settings() {
                 <h3 className="text-sm font-semibold uppercase text-slate-500">Shift</h3>
                 <label className="block text-sm font-medium text-slate-700">
                     Standard shift start
-                    <input type="time" name="shift_start" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.shift_start} onChange={change} required />
+                    <input id="shift_start" type="time" name="shift_start" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.shift_start} onChange={change} required />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
                     Standard shift end
-                    <input type="time" name="shift_end" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.shift_end} onChange={change} required />
+                    <input id="shift_end" type="time" name="shift_end" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.shift_end} onChange={change} required />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
                     Grace period (minutes)
-                    <input type="number" name="grace_period_minutes" min={0} max={120} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.grace_period_minutes} onChange={change} />
+                    <input id="grace_period_minutes" type="number" name="grace_period_minutes" min={0} max={120} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.grace_period_minutes} onChange={change} />
                     <span className="mt-1 block text-xs text-slate-500">Minutes after shift start before a clock-in counts as late. 0 = no grace.</span>
                 </label>
 
                 <h3 className="text-sm font-semibold uppercase text-slate-500 pt-2">Kiosk</h3>
                 <label className="block text-sm font-medium text-slate-700">
                     Scan debounce (seconds)
-                    <input type="number" name="scan_debounce_seconds" min={0} max={600} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.scan_debounce_seconds} onChange={change} required />
+                    <input id="scan_debounce_seconds" type="number" name="scan_debounce_seconds" min={0} max={600} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.scan_debounce_seconds} onChange={change} required />
                     <span className="mt-1 block text-xs text-slate-500">Ignores repeat scans for the same employee within this window.</span>
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
                     Branch label
-                    <input name="branch_label" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.branch_label} onChange={change} required />
+                    <input id="branch_label" name="branch_label" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.branch_label} onChange={change} required />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
                     Allowed scan IPs (comma-separated)
-                    <input name="scan_allowed_ips" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.scan_allowed_ips} onChange={change} placeholder="e.g. 192.168.1.0/24,10.0.0.1" />
+                    <input id="scan_allowed_ips" name="scan_allowed_ips" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.scan_allowed_ips} onChange={change} placeholder="e.g. 192.168.1.0/24,10.0.0.1" />
                     <span className="mt-1 block text-xs text-slate-500">Leave blank to allow all IPs.</span>
                 </label>
                 {isSuperAdmin && (
                     <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                        <input type="checkbox" name="kiosk_lockdown" checked={form.kiosk_lockdown} onChange={change} />
+                        <input id="kiosk_lockdown" type="checkbox" name="kiosk_lockdown" checked={form.kiosk_lockdown} onChange={change} />
                         Kiosk lockdown mode (disable navigation)
                     </label>
                 )}
 
                 <h3 className="text-sm font-semibold uppercase text-slate-500 pt-2">Alerts</h3>
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                    <input type="checkbox" name="enable_alerts" checked={form.enable_alerts} onChange={change} />
+                    <input id="enable_alerts" type="checkbox" name="enable_alerts" checked={form.enable_alerts} onChange={change} />
                     Enable missed punch and absence alerts
                 </label>
 
                 <h3 className="text-sm font-semibold uppercase text-slate-500 pt-2">Scheduled reports</h3>
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                    <input type="checkbox" name="enable_scheduled_reports" checked={form.enable_scheduled_reports} onChange={change} />
+                    <input id="enable_scheduled_reports" type="checkbox" name="enable_scheduled_reports" checked={form.enable_scheduled_reports} onChange={change} />
                     Enable scheduled email reports
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
                     Report email
-                    <input type="email" name="report_email" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.report_email} onChange={change} />
+                    <input id="report_email" type="email" name="report_email" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.report_email} onChange={change} />
                 </label>
                 <label className="block text-sm font-medium text-slate-700">
                     Frequency
-                    <select name="report_frequency" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.report_frequency} onChange={change}>
+                    <select id="report_frequency" name="report_frequency" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.report_frequency} onChange={change}>
                         <option value="daily">Daily</option>
                         <option value="weekly">Weekly</option>
                         <option value="monthly">Monthly</option>

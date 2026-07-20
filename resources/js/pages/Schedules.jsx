@@ -10,6 +10,7 @@ const EMPTY_SCHEDULE = {
     shift_end: '',
     break_minutes: 60,
     is_day_off: false,
+    works_on_public_holiday: false,
 };
 
 export default function Schedules() {
@@ -63,6 +64,7 @@ export default function Schedules() {
             shift_end: item.shift_end || '',
             break_minutes: item.break_minutes,
             is_day_off: item.is_day_off,
+            works_on_public_holiday: item.works_on_public_holiday || false,
         });
     };
 
@@ -99,6 +101,7 @@ export default function Schedules() {
             shift_end: '17:00',
             break_minutes: 60,
             is_day_off: false,
+            works_on_public_holiday: false,
         };
         const items = DAY_NAMES.map((_, i) => ({
             day_of_week: i,
@@ -106,6 +109,7 @@ export default function Schedules() {
             shift_end: defaultSchedule.shift_end,
             break_minutes: 60,
             is_day_off: i === 0 || i === 6,
+            works_on_public_holiday: false,
         }));
 
         setSaving(true);
@@ -178,14 +182,15 @@ export default function Schedules() {
                                     <th className="px-3 py-2">Shift end</th>
                                     <th className="px-3 py-2">Break (min)</th>
                                     <th className="px-3 py-2">Day off</th>
+                                    <th className="px-3 py-2">Works on public holiday</th>
                                     <th className="px-3 py-2" />
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
                                 {loading ? (
-                                    <tr><td colSpan={6} className="px-3 py-4 text-center text-slate-500">Loading…</td></tr>
+                                    <tr><td colSpan={7} className="px-3 py-4 text-center text-slate-500">Loading…</td></tr>
                                 ) : schedules.length === 0 ? (
-                                    <tr><td colSpan={6} className="px-3 py-4 text-center text-slate-500">No schedules configured.</td></tr>
+                                    <tr><td colSpan={7} className="px-3 py-4 text-center text-slate-500">No schedules configured.</td></tr>
                                 ) : schedules.map((s) => (
                                     <tr key={s.id} className="hover:bg-slate-50">
                                         <td className="px-3 py-2 font-medium">{s.day_name}</td>
@@ -193,6 +198,7 @@ export default function Schedules() {
                                         <td className="px-3 py-2 whitespace-nowrap">{s.shift_end || '—'}</td>
                                         <td className="px-3 py-2">{s.break_minutes}</td>
                                         <td className="px-3 py-2">{s.is_day_off ? 'Yes' : 'No'}</td>
+                                        <td className="px-3 py-2">{s.works_on_public_holiday ? 'Yes' : 'No'}</td>
                                         <td className="px-3 py-2 text-right">
                                             <button type="button" onClick={() => editSchedule(s)} className="text-xs font-semibold text-sky-700 underline">Edit</button>
                                         </td>
@@ -202,41 +208,45 @@ export default function Schedules() {
                         </table>
                     </div>
 
-                    {(form.day_of_week !== undefined) && (
-                        <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-                            <h3 className="text-lg font-bold text-slate-900">{schedules.find((s) => s.day_of_week === form.day_of_week) ? 'Edit rule' : 'Add rule'}</h3>
-                            <form onSubmit={submit} className="mt-4 grid gap-4 sm:grid-cols-2">
-                                <label className="block text-sm font-medium text-slate-700">
-                                    Day
-                                    <select name="day_of_week" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.day_of_week} onChange={change}>
-                                        {DAY_NAMES.map((name, i) => (
-                                            <option key={i} value={i}>{name}</option>
-                                        ))}
-                                    </select>
-                                </label>
-                                <label className="block text-sm font-medium text-slate-700">
-                                    Shift start
-                                    <input type="time" name="shift_start" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.shift_start} onChange={change} />
-                                </label>
-                                <label className="block text-sm font-medium text-slate-700">
-                                    Shift end
-                                    <input type="time" name="shift_end" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.shift_end} onChange={change} />
-                                </label>
-                                <label className="block text-sm font-medium text-slate-700">
-                                    Break (minutes)
-                                    <input type="number" name="break_minutes" min={0} max={480} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.break_minutes} onChange={change} />
-                                </label>
-                                <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
-                                    <input type="checkbox" name="is_day_off" checked={form.is_day_off} onChange={change} />
-                                    Day off
-                                </label>
-                                <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
-                                    <button type="button" onClick={() => setForm(EMPTY_SCHEDULE)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800">Cancel</button>
-                                    <button type="submit" disabled={saving} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
+                            {(form.day_of_week !== undefined) && (
+                                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                                    <h3 className="text-lg font-bold text-slate-900">{schedules.find((s) => s.day_of_week === form.day_of_week) ? 'Edit rule' : 'Add rule'}</h3>
+                                    <form onSubmit={submit} className="mt-4 grid gap-4 sm:grid-cols-2">
+                                        <label className="block text-sm font-medium text-slate-700">
+                                            Day
+                                            <select name="day_of_week" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.day_of_week} onChange={change}>
+                                                {DAY_NAMES.map((name, i) => (
+                                                    <option key={i} value={i}>{name}</option>
+                                                ))}
+                                            </select>
+                                        </label>
+                                        <label className="block text-sm font-medium text-slate-700">
+                                            Shift start
+                                            <input type="time" name="shift_start" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.shift_start} onChange={change} disabled={form.is_day_off} />
+                                        </label>
+                                        <label className="block text-sm font-medium text-slate-700">
+                                            Shift end
+                                            <input type="time" name="shift_end" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.shift_end} onChange={change} disabled={form.is_day_off} />
+                                        </label>
+                                        <label className="block text-sm font-medium text-slate-700">
+                                            Break (minutes)
+                                            <input type="number" name="break_minutes" min={0} max={480} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.break_minutes} onChange={change} disabled={form.is_day_off} />
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                            <input type="checkbox" name="is_day_off" checked={form.is_day_off} onChange={change} />
+                                            Day off
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                                            <input type="checkbox" name="works_on_public_holiday" checked={form.works_on_public_holiday} onChange={change} disabled={form.is_day_off} />
+                                            Works on public holiday
+                                        </label>
+                                        <div className="sm:col-span-2 flex justify-end gap-2 pt-2">
+                                            <button type="button" onClick={() => setForm(EMPTY_SCHEDULE)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800">Cancel</button>
+                                            <button type="submit" disabled={saving} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">{saving ? 'Saving…' : 'Save'}</button>
+                                        </div>
+                                    </form>
                                 </div>
-                            </form>
-                        </div>
-                    )}
+                            )}
                 </>
             )}
         </div>

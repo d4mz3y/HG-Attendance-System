@@ -23,7 +23,7 @@ class AppConfigService
 
     public function scanDebounceSeconds(): int
     {
-        return (int) Setting::getValue('scan_debounce_seconds', '120');
+        return (int) Setting::getValue('scan_debounce_seconds', '600');
     }
 
     public function branchLabel(): string
@@ -36,7 +36,7 @@ class AppConfigService
         return [
             'shift_start' => Setting::getValue('shift_start', '08:00'),
             'shift_end' => Setting::getValue('shift_end', '17:00'),
-            'scan_debounce_seconds' => (int) Setting::getValue('scan_debounce_seconds', '120'),
+            'scan_debounce_seconds' => (int) Setting::getValue('scan_debounce_seconds', '600'),
             'branch_label' => Setting::getValue('branch_label', 'Headquarters'),
             'grace_period_minutes' => (int) Setting::getValue('grace_period_minutes', '0'),
         ];

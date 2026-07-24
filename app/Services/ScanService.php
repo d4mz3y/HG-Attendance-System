@@ -6,7 +6,6 @@ use App\Models\Attendance;
 use App\Models\Leave;
 use App\Models\Staff;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ScanService
@@ -55,14 +54,6 @@ class ScanService
         $today = Carbon::today();
 
         return DB::transaction(function () use ($staff, $today) {
-            if (! Cache::add('scan_rapid_'.$staff->id, 1, 1)) {
-                return [
-                    'ok' => false,
-                    'error' => 'debounce',
-                    'message' => 'Scanner sent reads too quickly. Please try again.',
-                ];
-            }
-
             $open = Attendance::query()
                 ->where('staff_id', $staff->id)
                 ->whereDate('date', $today)
@@ -82,8 +73,6 @@ class ScanService
                     ->first();
 
                 if ($lastClosed && $lastClosed->clock_out->diffInSeconds(now()) < $debounce) {
-                    Cache::forget('scan_rapid_'.$staff->id);
-
                     return [
                         'ok' => false,
                         'error' => 'debounce',

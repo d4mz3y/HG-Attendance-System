@@ -145,4 +145,16 @@ class ScanService
             ],
         ];
     }
+
+    private function isOnLeave(Staff $staff): bool
+    {
+        $today = Carbon::today();
+
+        return Leave::query()
+            ->where('staff_id', $staff->id)
+            ->where('start_date', '<=', $today)
+            ->where('end_date', '>=', $today)
+            ->whereIn('status', ['Pending', 'Approved'])
+            ->exists();
+    }
 }

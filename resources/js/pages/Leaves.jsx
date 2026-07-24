@@ -36,7 +36,7 @@ export default function Leaves() {
     const [staffOpts, setStaffOpts] = useState([]);
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState(EMPTY);
-    const [saving, setSaving] = useState(false);
+    const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {
         api.get('/lookups/departments').then((r) => setDepartments(r.data));
@@ -92,6 +92,20 @@ export default function Leaves() {
     const closeEdit = () => {
         setEditing(null);
         setForm(EMPTY);
+    };
+
+    const deleteLeave = async (id) => {
+        setDeleting(id);
+        try {
+            await api.delete(`/leaves/${id}`);
+            addToast('Leave record deleted', 'success');
+            load(meta.current_page);
+        } catch (err) {
+            const msg = err.response?.data?.message ?? 'Unable to delete leave';
+            addToast(msg, 'error');
+        } finally {
+            setDeleting(null);
+        }
     };
 
     const submit = async (e) => {
@@ -196,6 +210,9 @@ export default function Leaves() {
                                 <td className="px-3 py-2 text-right">
                                     <button type="button" onClick={() => openEdit(r)} className="text-xs font-semibold text-sky-700 underline">
                                         Edit
+                                    </button>
+                                    <button type="button" onClick={() => deleteLeave(r.id)} disabled={deleting === r.id} className="ml-2 text-xs font-semibold text-red-600 underline disabled:opacity-40">
+                                        {deleting === r.id ? 'Deleting…' : 'Delete'}
                                     </button>
                                 </td>
                             </tr>

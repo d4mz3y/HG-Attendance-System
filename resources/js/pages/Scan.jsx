@@ -117,10 +117,13 @@ export default function Scan() {
         } else if (payload.error === 'on_leave') {
             addToast(payload.message, 'warning');
             setModal({ variant: 'warn', title: 'On leave', message: payload.message });
-        } else if (payload.error === 'debounce') {
-            addToast(payload.message, 'warning');
-            setModal({ variant: 'warn', title: 'Please wait', message: payload.message });
-        } else {
+} else if (payload.error === 'debounce') {
+             addToast(payload.message, 'warning');
+             setModal({ variant: 'warn', title: 'Please wait', message: payload.message });
+         } else if (payload.error === 'cooldown') {
+             addToast(payload.message, 'warning');
+             setModal({ variant: 'warn', title: 'Clock-out locked', message: payload.message });
+         } else {
             addToast(payload.message ?? 'Unable to process scan.', 'error');
             setModal({ variant: 'error', title: 'Scan error', message: payload.message ?? 'Unable to process scan.' });
         }

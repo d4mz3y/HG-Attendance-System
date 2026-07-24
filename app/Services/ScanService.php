@@ -85,6 +85,18 @@ class ScanService
             $isDayOff = $this->schedules->effectiveShift($staff, $today)['is_day_off'] ?? false;
 
             if ($open) {
+                $cooldown = max(0, $this->config->scanCooldownSeconds());
+
+                if ($cooldown > 0 && $open->clock_in && $open->clock_in->diffInSeconds($now) < $cooldown) {
+                    $minutesRemaining = (int) ceil(($cooldown - $open->clock_in->diffInSeconds($now)) / 60);
+
+                    return [
+                        'ok' => false,
+                        'error' => 'cooldown',
+                        'message' => "Clock-out is locked for {$minutesRemaining} more minute(s) after clock-in. Please wait before clocking out.",
+                    ];
+                }
+
                 $open->clock_out = $now;
                 $this->rules->applyClockOutRules($open);
                 $open->save();

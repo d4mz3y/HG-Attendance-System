@@ -26,6 +26,11 @@ class AppConfigService
         return (int) Setting::getValue('scan_debounce_seconds', '600');
     }
 
+    public function scanCooldownSeconds(): int
+    {
+        return (int) Setting::getValue('scan_cooldown_seconds', '1800');
+    }
+
     public function branchLabel(): string
     {
         return Setting::getValue('branch_label', 'Headquarters');
@@ -37,6 +42,7 @@ class AppConfigService
             'shift_start' => Setting::getValue('shift_start', '08:00'),
             'shift_end' => Setting::getValue('shift_end', '17:00'),
             'scan_debounce_seconds' => (int) Setting::getValue('scan_debounce_seconds', '600'),
+            'scan_cooldown_seconds' => (int) Setting::getValue('scan_cooldown_seconds', '1800'),
             'branch_label' => Setting::getValue('branch_label', 'Headquarters'),
             'grace_period_minutes' => (int) Setting::getValue('grace_period_minutes', '0'),
         ];

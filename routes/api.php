@@ -13,7 +13,6 @@ use App\Http\Controllers\Api\ReportController;
 use App\Http\Controllers\Api\ScanController;
 use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\SettingsController;
-use App\Http\Controllers\Api\StaffCodesController;
 use App\Http\Controllers\Api\StaffController;
 use Illuminate\Support\Facades\Route;
 
@@ -32,8 +31,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/staff', [StaffController::class, 'store']);
     Route::post('/staff/import', [StaffController::class, 'import']);
     Route::get('/staff/export', [StaffController::class, 'export']);
-    Route::get('/staff/{staff}/codes/qr', [StaffCodesController::class, 'qr']);
-    Route::get('/staff/{staff}/codes/barcode', [StaffCodesController::class, 'barcode']);
     Route::get('/staff/{staff}', [StaffController::class, 'show']);
     Route::put('/staff/{staff}', [StaffController::class, 'update']);
     Route::delete('/staff/{staff}', [StaffController::class, 'destroy']);

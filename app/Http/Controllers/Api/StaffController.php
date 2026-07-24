@@ -8,6 +8,7 @@ use App\Services\StaffIdService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class StaffController extends Controller
@@ -74,6 +75,12 @@ class StaffController extends Controller
 
     public function store(Request $request)
     {
+        if ($request->user()->role !== 'super_admin') {
+            throw ValidationException::withMessages([
+                'access' => ['Only super admins can create staff records.'],
+            ]);
+        }
+
         $data = $this->validated($request);
         if ($request->hasFile('photo')) {
             $data['photo_path'] = $request->file('photo')->store('staff-photos', 'public');
@@ -85,6 +92,12 @@ class StaffController extends Controller
 
     public function update(Request $request, Staff $staff)
     {
+        if ($request->user()->role !== 'super_admin') {
+            throw ValidationException::withMessages([
+                'access' => ['Only super admins can update staff records.'],
+            ]);
+        }
+
         $data = $this->validated($request, $staff->id);
         if ($request->hasFile('photo')) {
             if ($staff->photo_path) {
@@ -97,8 +110,14 @@ class StaffController extends Controller
         return response()->json($staff->fresh());
     }
 
-    public function destroy(Staff $staff)
+    public function destroy(Request $request, Staff $staff)
     {
+        if ($request->user()->role !== 'super_admin') {
+            throw ValidationException::withMessages([
+                'access' => ['Only super admins can deactivate staff records.'],
+            ]);
+        }
+
         $staff->update(['employment_status' => 'Inactive']);
 
         return response()->json(['ok' => true]);

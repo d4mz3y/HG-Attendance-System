@@ -47,6 +47,12 @@ class AttendanceController extends Controller
 
     public function update(Request $request, Attendance $attendance)
     {
+        if ($request->user()->role !== 'super_admin') {
+            throw ValidationException::withMessages([
+                'access' => ['Only super admins can edit attendance records.'],
+            ]);
+        }
+
         $data = $request->validate([
             'clock_in' => ['required', 'date'],
             'clock_out' => ['nullable', 'date', 'after:clock_in'],
@@ -124,6 +130,12 @@ class AttendanceController extends Controller
 
     public function storeManual(Request $request)
     {
+        if ($request->user()->role !== 'super_admin') {
+            throw ValidationException::withMessages([
+                'access' => ['Only super admins can manually override attendance.'],
+            ]);
+        }
+
         $data = $request->validate([
             'staff_id' => ['required', 'integer', 'exists:staff,id'],
             'date' => ['required', 'date'],

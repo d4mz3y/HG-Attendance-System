@@ -97,7 +97,6 @@ php artisan view:cache
 - Test scan terminal: http://your-domain.com/scan
 - Test admin login: http://your-domain.com/dashboard
 - Test Excel export with colored formatting
-- Test QR/barcode downloads
 - Test on mobile devices
 
 ## 10. Scheduled Tasks (Optional)

@@ -14,8 +14,6 @@ class Leave extends Model
         'type',
         'reason',
         'status',
-        'created_by',
-        'approved_at',
     ];
 
     protected function casts(): array

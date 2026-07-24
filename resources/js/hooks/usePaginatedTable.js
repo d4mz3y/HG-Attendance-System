@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import api from '../api';
 
 export function usePaginatedTable(initialPath, initialFilters = {}) {
@@ -7,6 +7,7 @@ export function usePaginatedTable(initialPath, initialFilters = {}) {
     const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
     const [filters, setFilters] = useState(initialFilters);
     const [loading, setLoading] = useState(false);
+    const filtersRef = useRef(filters);
 
     const load = useCallback((page = 1) => {
         setLoading(true);
@@ -28,9 +29,13 @@ export function usePaginatedTable(initialPath, initialFilters = {}) {
     }, [path, filters]);
 
     useEffect(() => {
-        load(1);
+        const serialized = JSON.stringify(filters);
+        if (serialized !== JSON.stringify(filtersRef.current)) {
+            filtersRef.current = filters;
+            load(1);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [path, JSON.stringify(filters)]);
+    }, [path, filters]);
 
     const updateFilter = (name, value) => {
         setFilters((f) => ({ ...f, [name]: value }));

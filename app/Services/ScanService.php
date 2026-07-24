@@ -52,50 +52,45 @@ class ScanService
             ];
         }
 
-        if (! Cache::add('scan_rapid_'.$staff->id, 1, 1)) {
-            return [
-                'ok' => false,
-                'error' => 'debounce',
-                'message' => 'Scanner sent reads too quickly. Please try again.',
-            ];
-        }
-
         $today = Carbon::today();
 
-        $openForGuard = Attendance::query()
-            ->where('staff_id', $staff->id)
-            ->whereDate('date', $today)
-            ->whereNull('clock_out')
-            ->first();
-
-        $debounce = max(0, $this->config->scanDebounceSeconds());
-
-        if (! $openForGuard && $debounce > 0) {
-            $lastClosed = Attendance::query()
-                ->where('staff_id', $staff->id)
-                ->whereDate('date', $today)
-                ->whereNotNull('clock_out')
-                ->orderByDesc('clock_out')
-                ->first();
-
-            if ($lastClosed && $lastClosed->clock_out->diffInSeconds(now()) < $debounce) {
-                Cache::forget('scan_rapid_'.$staff->id);
-
+        return DB::transaction(function () use ($staff, $today) {
+            if (! Cache::add('scan_rapid_'.$staff->id, 1, 1)) {
                 return [
                     'ok' => false,
                     'error' => 'debounce',
-                    'message' => 'Please wait before scanning again (duplicate / re-entry protection).',
+                    'message' => 'Scanner sent reads too quickly. Please try again.',
                 ];
             }
-        }
 
-        return DB::transaction(function () use ($staff, $today) {
             $open = Attendance::query()
                 ->where('staff_id', $staff->id)
                 ->whereDate('date', $today)
                 ->whereNull('clock_out')
                 ->lockForUpdate()
                 ->first();
+
+            $debounce = max(0, $this->config->scanDebounceSeconds());
+
+            if (! $open && $debounce > 0) {
+                $lastClosed = Attendance::query()
+                    ->where('staff_id', $staff->id)
+                    ->whereDate('date', $today)
+                    ->whereNotNull('clock_out')
+                    ->orderByDesc('clock_out')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($lastClosed && $lastClosed->clock_out->diffInSeconds(now()) < $debounce) {
+                    Cache::forget('scan_rapid_'.$staff->id);
+
+                    return [
+                        'ok' => false,
+                        'error' => 'debounce',
+                        'message' => 'Please wait before scanning again (duplicate / re-entry protection).',
+                    ];
+                }
+            }
 
             $now = now();
             $isDayOff = $this->schedules->effectiveShift($staff, $today)['is_day_off'] ?? false;
@@ -126,19 +121,7 @@ class ScanService
         });
     }
 
-    private function isOnLeave(Staff $staff): bool
-    {
-        $today = Carbon::today();
-
-        return Leave::query()
-            ->where('staff_id', $staff->id)
-            ->where('start_date', '<=', $today)
-            ->where('end_date', '>=', $today)
-            ->whereIn('status', ['Pending', 'Approved'])
-            ->exists();
-    }
-
-    /**
+/**
      * @return array<string, mixed>
      */
     protected function successPayload(Staff $staff, string $action, Carbon $at, Attendance $row): array

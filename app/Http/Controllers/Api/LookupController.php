@@ -5,12 +5,22 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class LookupController extends Controller
 {
     public function __construct(
         protected \App\Services\StaffIdService $staffIds
     ) {}
+
+    private function ensureSuperAdmin(Request $request): void
+    {
+        if ($request->user()->role !== 'super_admin') {
+            throw ValidationException::withMessages([
+                'access' => ['Only super admins can perform this action.'],
+            ]);
+        }
+    }
 
     public function departments()
     {
@@ -41,6 +51,7 @@ class LookupController extends Controller
 
     public function updateCompanies(Request $request)
     {
+        $this->ensureSuperAdmin($request);
         $data = $request->validate([
             'companies' => ['required', 'array', 'min:1', 'max:20'],
             'companies.*' => ['string', 'max:128', 'distinct'],
@@ -81,6 +92,7 @@ class LookupController extends Controller
 
     public function updateDepartments(Request $request)
     {
+        $this->ensureSuperAdmin($request);
         $data = $request->validate([
             'departments' => ['required', 'array', 'min:1', 'max:20'],
             'departments.*' => ['string', 'max:128', 'distinct'],
@@ -90,6 +102,7 @@ class LookupController extends Controller
 
         $existingCodes = $this->staffIds->departmentCodes();
         $prefixes = ['OPS', 'SEC', 'ADM', 'FIN', 'MGT', 'BOD', 'HR', 'IT', 'LOG', 'SAL', 'ACC', 'MKT', 'CLN', 'DRV', 'WKR'];
+        $codes = [];
         $nextIndex = 0;
 
         foreach ($data['departments'] as $name) {
@@ -121,6 +134,7 @@ class LookupController extends Controller
 
     public function updateBranches(Request $request)
     {
+        $this->ensureSuperAdmin($request);
         $data = $request->validate([
             'branches' => ['required', 'array', 'min:1', 'max:20'],
             'branches.*' => ['string', 'max:128', 'distinct'],

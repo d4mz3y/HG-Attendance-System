@@ -6,12 +6,22 @@ use App\Http\Controllers\Controller;
 use App\Models\Leave;
 use App\Services\LeaveService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class LeaveController extends Controller
 {
     public function __construct(
         protected LeaveService $leaves
     ) {}
+
+    private function ensureSuperAdmin(Request $request): void
+    {
+        if ($request->user()->role !== 'super_admin') {
+            throw ValidationException::withMessages([
+                'access' => ['Only super admins can perform this action.'],
+            ]);
+        }
+    }
 
     public function index(Request $request)
     {
@@ -37,6 +47,7 @@ class LeaveController extends Controller
 
     public function store(Request $request)
     {
+        $this->ensureSuperAdmin($request);
         $data = $request->validate([
             'staff_id' => ['required', 'integer', 'exists:staff,id'],
             'start_date' => ['required', 'date'],
@@ -59,6 +70,7 @@ class LeaveController extends Controller
 
     public function update(Request $request, Leave $leave)
     {
+        $this->ensureSuperAdmin($request);
         $data = $request->validate([
             'start_date' => ['nullable', 'date'],
             'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
@@ -76,8 +88,9 @@ class LeaveController extends Controller
         return response()->json($leave->fresh()->load('staff', 'creator'));
     }
 
-    public function destroy(Leave $leave)
+    public function destroy(Request $request, Leave $leave)
     {
+        $this->ensureSuperAdmin($request);
         $leave->delete();
 
         return response()->json(['ok' => true]);

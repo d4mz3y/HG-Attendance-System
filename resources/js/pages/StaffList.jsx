@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../api';
-import { downloadStaffCodePng } from '../staffCodeDownload';
 import { useToast, ConfirmDialog } from '../components/Toast';
 
 const SORT_OPTIONS = [
@@ -60,15 +59,6 @@ export default function StaffList() {
             addToast('Failed to deactivate staff', 'error');
         } finally {
             setConfirmId(null);
-        }
-    };
-
-    const downloadCode = async (staffPk, kind) => {
-        try {
-            await downloadStaffCodePng(staffPk, kind);
-            addToast('Code downloaded', 'success');
-        } catch {
-            addToast('Unable to download code image.', 'error');
         }
     };
 
@@ -197,8 +187,6 @@ export default function StaffList() {
                                     </span>
                                 </td>
                                 <td className="px-4 py-2 text-right text-xs">
-                                    <button type="button" className="font-semibold text-slate-700 underline" onClick={() => downloadCode(s.id, 'qr')}>QR</button>
-                                    <button type="button" className="ml-2 font-semibold text-slate-700 underline" onClick={() => downloadCode(s.id, 'barcode')}>Barcode</button>
                                     <Link to={`/staff/${s.id}/edit`} className="ml-3 font-semibold text-sky-700 underline">Edit</Link>
                                     {s.employment_status === 'Active' && (
                                         <button type="button" className="ml-3 font-semibold text-red-600" onClick={() => deactivate(s.id)}>Deactivate</button>

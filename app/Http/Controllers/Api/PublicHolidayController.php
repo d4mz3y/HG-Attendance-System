@@ -5,9 +5,19 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\PublicHoliday;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class PublicHolidayController extends Controller
 {
+    private function ensureSuperAdmin(Request $request): void
+    {
+        if ($request->user()->role !== 'super_admin') {
+            throw ValidationException::withMessages([
+                'access' => ['Only super admins can perform this action.'],
+            ]);
+        }
+    }
+
     public function index(Request $request)
     {
         $year = $request->integer('year') ?: now()->year;
@@ -23,6 +33,7 @@ class PublicHolidayController extends Controller
 
     public function store(Request $request)
     {
+        $this->ensureSuperAdmin($request);
         $data = $request->validate([
             'date' => ['required', 'date'],
             'name' => ['required', 'string', 'max:255'],
@@ -37,6 +48,7 @@ class PublicHolidayController extends Controller
 
     public function update(Request $request, PublicHoliday $publicHoliday)
     {
+        $this->ensureSuperAdmin($request);
         $data = $request->validate([
             'date' => ['nullable', 'date'],
             'name' => ['nullable', 'string', 'max:255'],
@@ -49,8 +61,9 @@ class PublicHolidayController extends Controller
         return response()->json($publicHoliday->fresh());
     }
 
-    public function destroy(PublicHoliday $publicHoliday)
+    public function destroy(Request $request, PublicHoliday $publicHoliday)
     {
+        $this->ensureSuperAdmin($request);
         $publicHoliday->delete();
 
         return response()->json(['ok' => true]);

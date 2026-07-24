@@ -3,12 +3,18 @@
 namespace App\Services;
 
 use App\Models\Attendance;
+use App\Models\Leave;
 use App\Models\Staff;
+use App\Services\ScheduleService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class BiometricService
 {
+    public function __construct(
+        protected ScheduleService $schedules
+    ) {}
+
     public function handlePunch(string $identifier, string $deviceId, ?array $metadata = null): array
     {
         $staff = Staff::query()
@@ -24,6 +30,10 @@ class BiometricService
             return ['ok' => false, 'error' => 'inactive', 'message' => 'Access denied'];
         }
 
+        if ($this->isOnLeave($staff)) {
+            return ['ok' => false, 'error' => 'on_leave', 'message' => 'Staff is currently on approved leave. Punch is blocked.'];
+        }
+
         $today = Carbon::today();
 
         return DB::transaction(function () use ($staff, $today, $deviceId, $metadata) {
@@ -33,6 +43,19 @@ class BiometricService
                 ->whereNull('clock_out')
                 ->lockForUpdate()
                 ->first();
+
+            $isDayOff = $this->schedules->effectiveShift($staff, $today)['is_day_off'] ?? false;
+
+            if ($isDayOff && ! $open) {
+                return [
+                    'ok' => true,
+                    'action' => 'in',
+                    'timestamp' => now()->toIso8601String(),
+                    'staff_id' => $staff->staff_id,
+                    'full_name' => $staff->full_name,
+                    'device_id' => $deviceId,
+                ];
+            }
 
             $now = now();
 
@@ -66,5 +89,17 @@ class BiometricService
                 'device_id' => $deviceId,
             ];
         });
+    }
+
+    private function isOnLeave(Staff $staff): bool
+    {
+        $today = Carbon::today();
+
+        return Leave::query()
+            ->where('staff_id', $staff->id)
+            ->where('start_date', '<=', $today)
+            ->where('end_date', '>=', $today)
+            ->whereIn('status', ['Pending', 'Approved'])
+            ->exists();
     }
 }

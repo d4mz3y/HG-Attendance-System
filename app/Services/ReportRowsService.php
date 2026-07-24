@@ -33,47 +33,56 @@ class ReportRowsService
         }
         $staffList = $staffQuery->orderBy('full_name')->get();
 
+        if ($staffList->isEmpty()) {
+            return collect();
+        }
+
+        $staffIds = $staffList->pluck('id')->all();
+        $dateRange = $this->dateRange($from, $to);
+
+        $presentIdsByDate = Attendance::query()
+            ->whereDate('date', '>=', $from->toDateString())
+            ->whereDate('date', '<=', $to->toDateString())
+            ->whereIn('staff_id', $staffIds)
+            ->get()
+            ->groupBy(fn ($a) => $a->date->format('Y-m-d'))
+            ->map(fn ($group) => $group->pluck('staff_id')->all())
+            ->all();
+
+        $leaveByStaffDate = $this->batchLeaves($staffIds, $from, $to);
+        $dayOffByStaffDate = $this->batchDayOffs($staffIds, $from, $to);
+
         $rows = collect();
 
         if ($status === 'absent') {
-            $cursor = $from->copy();
-            while ($cursor->lte($to)) {
-                $dateStr = $cursor->toDateString();
-                $presentIds = Attendance::query()
-                    ->whereDate('date', $dateStr)
-                    ->pluck('staff_id')
-                    ->all();
+            foreach ($dateRange as $dateStr) {
+                $presentIds = $presentIdsByDate[$dateStr] ?? [];
 
                 foreach ($staffList as $staff) {
                     if (in_array($staff->id, $presentIds, true)) {
                         continue;
                     }
 
-                    if ($this->isOnLeave($staff, $dateStr)) {
+                    if ($leaveByStaffDate[$staff->id][$dateStr] ?? false) {
                         $rows->push($this->onLeaveRow($staff, $dateStr));
-                    } elseif ($this->isDayOff($staff, $dateStr)) {
+                    } elseif ($dayOffByStaffDate[$staff->id][$dateStr] ?? false) {
                         $rows->push($this->dayOffRow($staff, $dateStr));
                     } else {
                         $rows->push($this->absentRow($staff, $dateStr));
                     }
                 }
-                $cursor->addDay();
             }
 
             return $rows;
         }
 
         if ($status === 'day_off') {
-            $cursor = $from->copy();
-            while ($cursor->lte($to)) {
-                $dateStr = $cursor->toDateString();
-
+            foreach ($dateRange as $dateStr) {
                 foreach ($staffList as $staff) {
-                    if ($this->isDayOff($staff, $dateStr)) {
+                    if ($dayOffByStaffDate[$staff->id][$dateStr] ?? false) {
                         $rows->push($this->dayOffRow($staff, $dateStr));
                     }
                 }
-                $cursor->addDay();
             }
 
             return $rows;
@@ -94,10 +103,10 @@ class ReportRowsService
                 return $rows;
             }
 
-            $staffIds = $staffList->pluck('id')->all();
             $attendances = Attendance::query()
                 ->whereIn('staff_id', $staffIds)
                 ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
+                ->with('staff')
                 ->get()
                 ->groupBy('staff_id');
 
@@ -159,25 +168,81 @@ class ReportRowsService
         return $rows;
     }
 
-    private function isOnLeave(Staff $staff, string $date): bool
+    /**
+     * @return array<string, array<int, bool>>
+     */
+    private function batchLeaves(array $staffIds, Carbon $from, Carbon $to): array
     {
-        return Leave::query()
-            ->where('staff_id', $staff->id)
-            ->where('start_date', '<=', $date)
-            ->where('end_date', '>=', $date)
+        $leaves = Leave::query()
+            ->whereIn('staff_id', $staffIds)
             ->whereIn('status', ['Pending', 'Approved'])
-            ->exists();
+            ->where('start_date', '<=', $to->toDateString())
+            ->where('end_date', '>=', $from->toDateString())
+            ->get(['staff_id', 'start_date', 'end_date'])
+            ->groupBy('staff_id');
+
+        $result = [];
+        foreach ($staffIds as $id) {
+            $result[$id] = [];
+        }
+
+        foreach ($leaves as $staffId => $staffLeaves) {
+            $staffDateMap = [];
+            foreach ($staffLeaves as $leave) {
+                $start = Carbon::parse($leave->start_date);
+                $end = Carbon::parse($leave->end_date);
+                $cursor = $start->copy();
+                while ($cursor->lte($end)) {
+                    $staffDateMap[$cursor->toDateString()] = true;
+                    $cursor->addDay();
+                }
+            }
+            $result[$staffId] = $staffDateMap;
+        }
+
+        return $result;
     }
 
-    private function isDayOff(Staff $staff, string $date): bool
+    /**
+     * @return array<string, array<int, bool>>
+     */
+    private function batchDayOffs(array $staffIds, Carbon $from, Carbon $to): array
     {
-        $dayOfWeek = Carbon::parse($date)->format('w');
-
-        return StaffSchedule::query()
-            ->where('staff_id', $staff->id)
-            ->where('day_of_week', $dayOfWeek)
+        $schedules = StaffSchedule::query()
+            ->whereIn('staff_id', $staffIds)
             ->where('is_day_off', true)
-            ->exists();
+            ->get(['staff_id', 'day_of_week'])
+            ->groupBy('staff_id');
+
+        $result = [];
+        foreach ($staffIds as $id) {
+            $result[$id] = [];
+            $days = $schedules[$id] ?? collect();
+            $dayMap = $days->pluck('day_of_week')->all();
+
+            foreach ($this->dateRange($from, $to) as $dateStr) {
+                $dayOfWeek = Carbon::parse($dateStr)->format('w');
+                if (in_array($dayOfWeek, $dayMap, true)) {
+                    $result[$id][$dateStr] = true;
+                }
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return string[]
+     */
+    private function dateRange(Carbon $from, Carbon $to): array
+    {
+        $dates = [];
+        $cursor = $from->copy();
+        while ($cursor->lte($to)) {
+            $dates[] = $cursor->toDateString();
+            $cursor->addDay();
+        }
+        return $dates;
     }
 
     /**

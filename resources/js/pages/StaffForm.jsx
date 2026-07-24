@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../api';
-import { downloadStaffCodePng } from '../staffCodeDownload';
 import { useToast } from '../components/Toast';
 
 const empty = {
@@ -102,14 +101,6 @@ export default function StaffForm() {
         }
     };
 
-    const pullCode = async (staffPk, kind) => {
-        try {
-            await downloadStaffCodePng(staffPk, kind);
-        } catch {
-            addToast('Unable to download code image.', 'error');
-        }
-    };
-
     const deptOptions = departments.length
         ? departments
         : ['Board of Directors', 'Management', 'Operations', 'Admin', 'Finance', 'Security'];
@@ -120,47 +111,14 @@ export default function StaffForm() {
                 <h1 className="text-2xl font-bold text-slate-900">{isEdit ? 'Edit staff' : 'Add staff'}</h1>
                 <p className="text-sm text-slate-500">
                     Staff ID format: <span className="font-mono">HGL/LA/OPS/003</span> (company / branch / department / number).
-                    QR and barcode encode this exact ID.
                 </p>
-                {isEdit && id && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                            type="button"
-                            onClick={() => pullCode(id, 'qr')}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                        >
-                            Download QR
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => pullCode(id, 'barcode')}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-                        >
-                            Download barcode
-                        </button>
-                    </div>
-                )}
             </div>
 
             {createdStaff && (
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-950">
                     <p className="font-semibold">Staff saved ({createdStaff.staff_id})</p>
-                    <p className="mt-1 text-emerald-900">Printable codes use the same ID the kiosk scanner expects.</p>
+                    <p className="mt-1 text-emerald-900">The staff ID is used by the kiosk scanner.</p>
                     <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                            type="button"
-                            onClick={() => pullCode(createdStaff.id, 'qr')}
-                            className="rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
-                        >
-                            Download QR
-                        </button>
-                        <button
-                            type="button"
-                            onClick={() => pullCode(createdStaff.id, 'barcode')}
-                            className="rounded-lg bg-emerald-800 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-900"
-                        >
-                            Download barcode
-                        </button>
                         <button
                             type="button"
                             onClick={() => navigate('/staff')}
@@ -223,7 +181,7 @@ export default function StaffForm() {
                 </div>
 
                 <label className="block text-sm font-medium text-slate-700">
-                    Staff ID (barcode / QR)
+                    Staff ID
                     <div className="mt-1 flex gap-2">
                         <input
                             id="staff_id"

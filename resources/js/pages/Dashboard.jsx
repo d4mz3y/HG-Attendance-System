@@ -21,7 +21,7 @@ export default function Dashboard() {
         setModalLoading(true);
         setModal(category);
         api.get(`/dashboard/sessions/${category}`)
-            .then((r) => setModalStaff(r.data))
+            .then((r) => setModalStaff(Array.isArray(r.data) ? r.data : []))
             .finally(() => setModalLoading(false));
     };
 
@@ -65,7 +65,7 @@ export default function Dashboard() {
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
                     <h2 className="text-sm font-semibold text-amber-800">Missed clock-outs</h2>
                     <ul className="mt-2 divide-y divide-amber-100">
-                        {data.alerts.map((a) => (
+                        {(Array.isArray(data.alerts) ? data.alerts : []).map((a) => (
                             <li key={a.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
                                 <div>
                                     <div className="font-semibold text-slate-900">{a.staff_name}</div>
@@ -166,7 +166,7 @@ export default function Dashboard() {
                     Recent scans
                 </div>
                 <ul className="divide-y divide-slate-100">
-                    {data.recent.map((row) => (
+                    {(Array.isArray(data.recent) ? data.recent : []).map((row) => (
                         <li key={row.id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
                             <div>
                                 <div className="font-semibold text-slate-900">{row.staff?.full_name}</div>

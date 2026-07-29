@@ -4,9 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Attendance;
-use App\Models\Staff;
 use App\Services\AlertService;
-use App\Services\ScheduleService;
 use Carbon\Carbon;
 
 class DashboardController extends Controller
@@ -52,8 +50,6 @@ class DashboardController extends Controller
     public function sessionCategory($category)
     {
         $today = Carbon::today();
-        $graceMinutes = (int) app(\App\Services\AppConfigService::class)->shiftStart()
-            ->diffInMinutes(Carbon::today()->setTime(8, 0));
 
         switch ($category) {
             case 'open':

@@ -6,6 +6,7 @@ use App\Models\Attendance;
 use App\Models\Leave;
 use App\Models\Staff;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 
 class ScanService
@@ -13,7 +14,8 @@ class ScanService
     public function __construct(
         protected AppConfigService $config,
         protected AttendanceRulesService $rules,
-        protected ScheduleService $schedules
+        protected ScheduleService $schedules,
+        protected SubscriptionService $subscription
     ) {}
 
     /**
@@ -51,6 +53,18 @@ class ScanService
             ];
         }
 
+        if (! $this->subscription->isSubscriptionActive()) {
+            $remaining = $this->subscription->getScanCapRemaining($staff->id);
+
+            if ($remaining <= 0) {
+                return [
+                    'ok' => false,
+                    'error' => 'scan_cap_reached',
+                    'message' => 'Daily scan limit reached. Upgrade to continue scanning.',
+                ];
+            }
+        }
+
         $today = Carbon::today();
         $now = now();
 
@@ -78,6 +92,8 @@ class ScanService
                 }
 
                 $row->save();
+
+                $this->subscription->recordScan($staff->id);
 
                 return $this->successPayload($staff, 'in', $now, $row);
             }
@@ -114,9 +130,10 @@ class ScanService
 
             $lastRecord->clock_out = $now;
             $this->rules->applyClockOutRules($lastRecord);
-            $lastRecord->save();
+$lastRecord->save();
+                $this->subscription->recordScan($staff->id);
 
-            return $this->successPayload($staff, 'out', $lastRecord->clock_out, $lastRecord);
+                return $this->successPayload($staff, 'out', $lastRecord->clock_out, $lastRecord);
         });
     }
 

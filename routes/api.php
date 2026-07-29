@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\ScheduleController;
 use App\Http\Controllers\Api\SettingsController;
 use App\Http\Controllers\Api\StaffCodesController;
 use App\Http\Controllers\Api\StaffController;
+use App\Http\Controllers\Api\SubscriptionController;
 use Illuminate\Support\Facades\Route;
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:20,1');
@@ -66,6 +67,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/settings', [SettingsController::class, 'show']);
     Route::put('/settings', [SettingsController::class, 'update']);
 
+    Route::get('/subscription/status', [SubscriptionController::class, 'status']);
+
     Route::get('/lookups/departments', [LookupController::class, 'departments']);
     Route::get('/lookups/staff', [LookupController::class, 'staffOptions']);
     Route::get('/lookups/branches', [LookupController::class, 'branches']);
@@ -74,13 +77,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/lookups/branches', [LookupController::class, 'updateBranches']);
     Route::put('/lookups/companies', [LookupController::class, 'updateCompanies']);
 
-    Route::get('/reports', [ReportController::class, 'index']);
-    Route::post('/reports/export', [ReportController::class, 'export']);
-    Route::get('/reports/export/pdf', [ReportController::class, 'exportPdf']);
-    Route::get('/reports/compliance', [ReportController::class, 'compliance']);
-    Route::get('/reports/comparisons', [ReportController::class, 'comparisons']);
+    Route::get('/reports', [ReportController::class, 'index'])->middleware('subscription.gate');
+    Route::post('/reports/export', [ReportController::class, 'export'])->middleware('subscription.gate');
+    Route::get('/reports/export/pdf', [ReportController::class, 'exportPdf'])->middleware('subscription.gate');
+    Route::get('/reports/compliance', [ReportController::class, 'compliance'])->middleware('subscription.gate');
+    Route::get('/reports/comparisons', [ReportController::class, 'comparisons'])->middleware('subscription.gate');
 
     Route::post('/scan/sync', [ScanController::class, 'sync']);
     Route::get('/scan/pending', [ScanController::class, 'pending']);
-    Route::get('/audits', [AuditController::class, 'index']);
+    Route::get('/audits', [AuditController::class, 'index'])->middleware('subscription.gate');
 });

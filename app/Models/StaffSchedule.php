@@ -22,8 +22,8 @@ class StaffSchedule extends Model
     protected function casts(): array
     {
         return [
-            'shift_start' => 'datetime:H:i',
-            'shift_end' => 'datetime:H:i',
+            'shift_start' => 'string',
+            'shift_end' => 'string',
             'is_day_off' => 'boolean',
             'works_on_public_holiday' => 'boolean',
         ];

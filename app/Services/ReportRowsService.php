@@ -118,16 +118,23 @@ class ReportRowsService
                 ->groupBy('staff_id');
 
             foreach ($staffList as $staff) {
-                $staffAttendances = $attendances[$staff->id] ?? collect();
                 $staffSchedules = $schedules[$staff->id] ?? collect();
                 $scheduleDays = $staffSchedules->pluck('day_of_week')->all();
 
-                foreach ($staffAttendances as $attendance) {
-                    $dateStr = $attendance->date->format('Y-m-d');
-                    $dayOfWeek = $attendance->date->format('w');
+                foreach ($holidayDates as $dateStr) {
+                    $dayOfWeek = Carbon::parse($dateStr)->format('w');
 
-                    if (in_array($dateStr, $holidayDates) && in_array($dayOfWeek, $scheduleDays)) {
+                    if (! in_array($dayOfWeek, $scheduleDays, true)) {
+                        continue;
+                    }
+
+                    $staffAttendances = $attendances[$staff->id] ?? collect();
+                    $attendance = $staffAttendances->first(fn ($a) => $a->date->format('Y-m-d') === $dateStr);
+
+                    if ($attendance) {
                         $rows->push($this->attendanceRow($attendance, true));
+                    } else {
+                        $rows->push($this->publicHolidayWorkRow($staff, $dateStr));
                     }
                 }
             }
@@ -302,6 +309,26 @@ class ReportRowsService
             'overtime_minutes' => '',
             'notes' => '',
             'status' => 'Absent',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function publicHolidayWorkRow(Staff $staff, string $date): array
+    {
+        return [
+            'full_name' => $staff->full_name,
+            'staff_code' => $staff->staff_id,
+            'department' => $staff->department,
+            'date' => $date,
+            'clock_in' => '',
+            'clock_out' => '',
+            'total_hours' => '',
+            'late_minutes' => '',
+            'overtime_minutes' => '',
+            'notes' => '',
+            'status' => 'Public Holiday Work (Scheduled)',
         ];
     }
 

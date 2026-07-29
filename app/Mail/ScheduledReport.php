@@ -12,17 +12,18 @@ class ScheduledReport extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public function __construct(protected $filters, protected $rows) {}
+    public function __construct(protected string $from, protected string $to, protected \Illuminate\Support\Collection $rows) {}
 
     public function build()
     {
-        $this->subject('Hogan Guards Attendance Report')
+        $this->subject("Hogan Guards Attendance Report — {$this->from} to {$this->to}")
             ->view('emails.scheduled-report')
             ->with([
-                'filters' => $this->filters,
+                'from' => $this->from,
+                'to' => $this->to,
             ]);
 
-        $excel = Excel::raw(new AttendanceReportExport($this->rows), \Maatwebsite\Excel\Excel::XLSX);
+        $excel = Excel::raw(new \App\Exports\AttendanceReportExport($this->rows), \Maatwebsite\Excel\Excel::XLSX);
 
         return $this->attachData($excel, 'attendance_report.xlsx', [
             'mime' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

@@ -6,9 +6,11 @@ export default function Dashboard() {
     const [modal, setModal] = useState(null);
     const [modalStaff, setModalStaff] = useState([]);
     const [modalLoading, setModalLoading] = useState(false);
+    const [subscription, setSubscription] = useState(null);
 
     useEffect(() => {
         api.get('/dashboard/today').then((r) => setData(r.data));
+        api.get('/subscription/status').then((r) => setSubscription(r.data)).catch(() => {});
     }, []);
 
     if (!data) {
@@ -34,6 +36,30 @@ export default function Dashboard() {
                 <h1 className="text-2xl font-bold text-slate-900">Today at HQ</h1>
                 <p className="text-sm text-slate-500">{data.date}</p>
             </div>
+
+            {subscription?.show_warning && !subscription?.active && (
+                <div className="rounded-2xl border border-amber-300 bg-amber-50 p-4 shadow-sm animate-fade-in">
+                    <div className="flex items-start justify-between gap-4">
+                        <div>
+                            <h2 className="text-sm font-semibold text-amber-900">Trial expiring soon</h2>
+                            <p className="mt-1 text-sm text-amber-800">
+                                Your free trial ends on{' '}
+                                {new Date(subscription.trial_expiry).toLocaleDateString('en-US', {
+                                    year: 'numeric', month: 'long', day: 'numeric',
+                                })}.
+                                After that, barcode scans will be limited to 20 per day and reports/audits will be locked.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setModal('upgrade')}
+                            className="shrink-0 rounded-lg bg-hg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-hg-blue transition-colors"
+                        >
+                            Upgrade now
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {data.alerts?.length > 0 && (
                 <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
@@ -76,11 +102,32 @@ export default function Dashboard() {
                     <div className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-between">
                             <h2 className="text-lg font-bold text-slate-900">
-                                {modal === 'open' ? 'Open Sessions' : modal === 'completed' ? 'Completed Sessions' : 'Late Clock-ins'}
+                                {modal === 'open' ? 'Open Sessions' : modal === 'completed' ? 'Completed Sessions' : modal === 'late' ? 'Late Clock-ins' : modal === 'upgrade' ? 'Upgrade required' : 'Details'}
                             </h2>
                             <button type="button" onClick={closeModal} className="text-slate-400 hover:text-slate-600 text-xl leading-none" aria-label="Close">&times;</button>
                         </div>
-                        {modalLoading ? (
+                        {modal === 'upgrade' ? (
+                            <div className="mt-4 space-y-4">
+                                <p className="text-sm text-slate-600">
+                                    This feature is locked because your free trial has ended. Upgrade to a paid plan to unlock reports and audit access.
+                                </p>
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                    {(subscription?.pricing || []).map((plan) => (
+                                        <div key={plan.interval} className="rounded-xl border border-slate-200 bg-white p-4">
+                                            <div className="text-sm font-semibold text-slate-900">{plan.description}</div>
+                                            <div className="mt-2 text-2xl font-black text-slate-900">${(plan.price / 100).toFixed(2)}<span className="text-sm font-normal text-slate-500">/{plan.interval}</span></div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {/* Paystack integration would go here */}}
+                                                className="mt-3 w-full rounded-lg bg-hg-navy px-4 py-2 text-sm font-semibold text-white hover:bg-hg-blue transition-colors"
+                                            >
+                                                Subscribe
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : modalLoading ? (
                             <div className="mt-4 text-center text-sm text-slate-500">Loading…</div>
                         ) : modalStaff.length === 0 ? (
                             <div className="mt-4 text-center text-sm text-slate-500">No records found.</div>

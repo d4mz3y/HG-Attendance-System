@@ -117,9 +117,9 @@ if (payload.error === 'not_found') {
         } else if (payload.error === 'on_leave') {
             addToast(payload.message, 'warning');
             setModal({ variant: 'warn', title: 'On leave', message: payload.message });
-        } else if (payload.error === 'debounce' || payload.error === 'cooldown' || payload.error === 'already_signed_out') {
+        } else if (payload.error === 'debounce' || payload.error === 'cooldown' || payload.error === 'already_signed_out' || payload.error === 'scan_cap_reached') {
             addToast(payload.message, 'warning');
-            setModal({ variant: 'warn', title: payload.error === 'already_signed_out' ? 'Signed out' : payload.error === 'cooldown' ? 'Clock-out locked' : 'Please wait', message: payload.message });
+            setModal({ variant: 'warn', title: payload.error === 'already_signed_out' ? 'Signed out' : payload.error === 'cooldown' ? 'Clock-out locked' : payload.error === 'scan_cap_reached' ? 'Upgrade required' : 'Please wait', message: payload.message });
         } else {
             addToast(payload.message ?? 'Unable to process scan.', 'error');
             setModal({ variant: 'error', title: 'Scan error', message: payload.message ?? 'Unable to process scan.' });

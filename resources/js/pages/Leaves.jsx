@@ -36,6 +36,7 @@ export default function Leaves() {
     const [staffOpts, setStaffOpts] = useState([]);
     const [editing, setEditing] = useState(null);
     const [form, setForm] = useState(EMPTY);
+    const [saving, setSaving] = useState(false);
     const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {

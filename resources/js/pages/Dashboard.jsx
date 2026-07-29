@@ -62,7 +62,7 @@ export default function Dashboard() {
                         type="button"
                         key={title}
                         onClick={() => openCategory(category)}
-                        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm text-left transition-colors hover:border-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-slate-400"
+                        className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-slate-400 animate-fade-in"
                     >
                         <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">{title}</div>
                         <div className="mt-2 text-3xl font-black text-slate-900">{value}</div>

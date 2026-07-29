@@ -7,3 +7,36 @@
   --color-hg-gold: #fbbf24;
   --color-hg-amber: #f59e0b;
 }
+
+*, *::before, *::after {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 200ms;
+}
+
+.animate-fade-in {
+  animation: fadeIn 200ms ease-out forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 200ms ease-out forwards;
+}
+
+.animate-fade-out {
+  animation: fadeOut 150ms ease-in forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}

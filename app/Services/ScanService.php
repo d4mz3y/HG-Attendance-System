@@ -52,77 +52,75 @@ class ScanService
         }
 
         $today = Carbon::today();
+        $now = now();
 
-        return DB::transaction(function () use ($staff, $today) {
-            $open = Attendance::query()
+        return DB::transaction(function () use ($staff, $today, $now) {
+            $todayRecords = Attendance::query()
                 ->where('staff_id', $staff->id)
                 ->whereDate('date', $today)
-                ->whereNull('clock_out')
                 ->lockForUpdate()
-                ->first();
+                ->get();
 
-            $debounce = max(0, $this->config->scanDebounceSeconds());
+            $count = $todayRecords->count();
 
-            if (! $open && $debounce > 0) {
-                $lastClosed = Attendance::query()
-                    ->where('staff_id', $staff->id)
-                    ->whereDate('date', $today)
-                    ->whereNotNull('clock_out')
-                    ->orderByDesc('clock_out')
-                    ->lockForUpdate()
-                    ->first();
+            if ($count === 0) {
+                $row = new Attendance([
+                    'staff_id' => $staff->id,
+                    'date' => $today,
+                    'clock_in' => $now,
+                ]);
+                $this->rules->applyClockInRules($row);
 
-                if ($lastClosed && $lastClosed->clock_out->diffInSeconds(now()) < $debounce) {
-                    return [
-                        'ok' => false,
-                        'error' => 'debounce',
-                        'message' => 'Please wait before scanning again (duplicate / re-entry protection).',
-                    ];
-                }
-            }
-
-            $now = now();
-            $isDayOff = $this->schedules->effectiveShift($staff, $today)['is_day_off'] ?? false;
-
-            if ($open) {
-                $cooldown = max(0, $this->config->scanCooldownSeconds());
-
-                if ($cooldown > 0 && $open->clock_in && $open->clock_in->diffInSeconds($now) < $cooldown) {
-                    $minutesRemaining = (int) ceil(($cooldown - $open->clock_in->diffInSeconds($now)) / 60);
-
-                    return [
-                        'ok' => false,
-                        'error' => 'cooldown',
-                        'message' => "Clock-out is locked for {$minutesRemaining} more minute(s) after clock-in. Please wait before clocking out.",
-                    ];
+                $isDayOff = $this->schedules->effectiveShift($staff, $today)['is_day_off'] ?? false;
+                if ($isDayOff) {
+                    $row->is_late = false;
+                    $row->late_minutes = 0;
                 }
 
-                $open->clock_out = $now;
-                $this->rules->applyClockOutRules($open);
-                $open->save();
+                $row->save();
 
-                return $this->successPayload($staff, 'out', $open->clock_out, $open);
+                return $this->successPayload($staff, 'in', $now, $row);
             }
 
-            $row = new Attendance([
-                'staff_id' => $staff->id,
-                'date' => $today,
-                'clock_in' => $now,
-            ]);
-            $this->rules->applyClockInRules($row);
+            $lastRecord = $todayRecords->sortByDesc('clock_in')->first();
 
-            if ($isDayOff) {
-                $row->is_late = false;
-                $row->late_minutes = 0;
+            if ($count >= 2) {
+                return [
+                    'ok' => false,
+                    'error' => 'already_signed_out',
+                    'message' => 'You\'ve already signed out for today. Try again tomorrow.',
+                ];
             }
 
-            $row->save();
+            if ($lastRecord->clock_out !== null) {
+                return [
+                    'ok' => false,
+                    'error' => 'already_signed_out',
+                    'message' => 'You\'ve already signed out for today. Try again tomorrow.',
+                ];
+            }
 
-            return $this->successPayload($staff, 'in', $now, $row);
+            $cooldown = max(0, $this->config->scanCooldownSeconds());
+
+            if ($cooldown > 0 && $lastRecord->clock_in && $now->diffInSeconds($lastRecord->clock_in) < $cooldown) {
+                $minutesRemaining = (int) ceil(($cooldown - $now->diffInSeconds($lastRecord->clock_in)) / 60);
+
+                return [
+                    'ok' => false,
+                    'error' => 'cooldown',
+                    'message' => "Clock-out is locked for {$minutesRemaining} more minute(s) after clock-in. Please wait before clocking out.",
+                ];
+            }
+
+            $lastRecord->clock_out = $now;
+            $this->rules->applyClockOutRules($lastRecord);
+            $lastRecord->save();
+
+            return $this->successPayload($staff, 'out', $lastRecord->clock_out, $lastRecord);
         });
     }
 
-/**
+    /**
      * @return array<string, mixed>
      */
     protected function successPayload(Staff $staff, string $action, Carbon $at, Attendance $row): array

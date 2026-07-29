@@ -108,7 +108,7 @@ export default function Scan() {
     }, [addToast, focusInput]);
 
     const handleError = useCallback((payload) => {
-        if (payload.error === 'not_found') {
+if (payload.error === 'not_found') {
             addToast('This barcode is not registered.', 'error');
             setModal({ variant: 'error', title: 'Staff not found', message: 'This barcode is not registered.' });
         } else if (payload.error === 'inactive') {
@@ -117,13 +117,10 @@ export default function Scan() {
         } else if (payload.error === 'on_leave') {
             addToast(payload.message, 'warning');
             setModal({ variant: 'warn', title: 'On leave', message: payload.message });
-} else if (payload.error === 'debounce') {
-             addToast(payload.message, 'warning');
-             setModal({ variant: 'warn', title: 'Please wait', message: payload.message });
-         } else if (payload.error === 'cooldown') {
-             addToast(payload.message, 'warning');
-             setModal({ variant: 'warn', title: 'Clock-out locked', message: payload.message });
-         } else {
+        } else if (payload.error === 'debounce' || payload.error === 'cooldown' || payload.error === 'already_signed_out') {
+            addToast(payload.message, 'warning');
+            setModal({ variant: 'warn', title: payload.error === 'already_signed_out' ? 'Signed out' : payload.error === 'cooldown' ? 'Clock-out locked' : 'Please wait', message: payload.message });
+        } else {
             addToast(payload.message ?? 'Unable to process scan.', 'error');
             setModal({ variant: 'error', title: 'Scan error', message: payload.message ?? 'Unable to process scan.' });
         }

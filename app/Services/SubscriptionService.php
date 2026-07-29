@@ -77,16 +77,8 @@ class SubscriptionService
     public function getPricing(): array
     {
         return [
-            'monthly' => [
-                'price' => 2500,
-                'description' => '$25/month',
-                'interval' => 'monthly',
-            ],
-            'yearly' => [
-                'price' => 28000,
-                'description' => '$280/year',
-                'interval' => 'yearly',
-            ],
+            ['price' => 2500, 'description' => '$25/month', 'interval' => 'monthly'],
+            ['price' => 28000, 'description' => '$280/year', 'interval' => 'yearly'],
         ];
     }
 

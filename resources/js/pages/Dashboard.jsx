@@ -112,7 +112,7 @@ export default function Dashboard() {
                                     This feature is locked because your free trial has ended. Upgrade to a paid plan to unlock reports and audit access.
                                 </p>
                                 <div className="grid gap-4 sm:grid-cols-2">
-                                    {(subscription?.pricing || []).map((plan) => (
+                                    {(Array.isArray(subscription?.pricing) ? subscription.pricing : []).map((plan) => (
                                         <div key={plan.interval} className="rounded-xl border border-slate-200 bg-white p-4">
                                             <div className="text-sm font-semibold text-slate-900">{plan.description}</div>
                                             <div className="mt-2 text-2xl font-black text-slate-900">${(plan.price / 100).toFixed(2)}<span className="text-sm font-normal text-slate-500">/{plan.interval}</span></div>

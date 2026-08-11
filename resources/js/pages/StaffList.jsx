@@ -162,7 +162,7 @@ export default function StaffList() {
 
             <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <table className="min-w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-xs font-semibold uppercase text-slate-500">
+                    <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase text-slate-500">
                         <tr>
                             <th className="px-4 py-3">Photo</th>
                             <th className="px-4 py-3">Staff ID</th>
@@ -174,8 +174,8 @@ export default function StaffList() {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                        {rows.map((s) => (
-                            <tr key={s.id} className="hover:bg-slate-50">
+                        {rows.map((s, i) => (
+                            <tr key={s.id} className={`hover:bg-slate-50 ${i % 2 === 0 ? 'bg-white' : 'bg-slate-50/50'}`}>
                                 <td className="px-4 py-2">
                                     <div className="h-10 w-10 overflow-hidden rounded-full bg-slate-200">
                                         {s.photo_url ? (

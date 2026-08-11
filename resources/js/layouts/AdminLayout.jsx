@@ -44,8 +44,8 @@ export default function AdminLayout() {
     }
 
     return (
-        <div className="min-h-screen md:flex bg-slate-50 text-slate-900">
-            <aside className="border-b md:w-64 md:border-b-0 md:border-r md:min-h-screen border-slate-200 bg-white">
+        <div className="flex min-h-screen flex-col md:h-screen md:flex-row bg-slate-50 text-slate-900">
+            <aside className="border-b md:w-64 md:border-b-0 md:border-r md:h-screen md:overflow-hidden border-slate-200 bg-white shrink-0">
                 <div className="px-4 py-4 md:block">
                     <div className="flex items-center gap-3">
                         <img src="/logo.png" alt="Hogan Guards" className="h-12 w-12 rounded-lg object-contain" />
@@ -74,7 +74,7 @@ export default function AdminLayout() {
                     </button>
                 </nav>
             </aside>
-            <main className="flex-1 p-4 md:p-8">
+            <main className="flex-1 overflow-y-auto p-4 md:p-8">
                 <Outlet />
             </main>
         </div>

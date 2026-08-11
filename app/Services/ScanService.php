@@ -45,7 +45,7 @@ class ScanService
             ];
         }
 
-        if ($this->isOnLeave($staff)) {
+        if ($this->isOnApprovedLeave($staff)) {
             return [
                 'ok' => false,
                 'error' => 'on_leave',
@@ -78,24 +78,52 @@ class ScanService
             $count = $todayRecords->count();
 
             if ($count === 0) {
-                $row = new Attendance([
-                    'staff_id' => $staff->id,
-                    'date' => $today,
-                    'clock_in' => $now,
-                ]);
-                $this->rules->applyClockInRules($row);
-
-                $isDayOff = $this->schedules->effectiveShift($staff, $today)['is_day_off'] ?? false;
-                if ($isDayOff) {
-                    $row->is_late = false;
-                    $row->late_minutes = 0;
+                if ($this->isOnApprovedLeave($staff)) {
+                    return [
+                        'ok' => false,
+                        'error' => 'on_leave',
+                        'message' => 'Staff is currently on approved leave. Clock-in is blocked.',
+                    ];
                 }
 
-                $row->save();
+                try {
+                    $row = new Attendance([
+                        'staff_id' => $staff->id,
+                        'date' => $today,
+                        'clock_in' => $now,
+                    ]);
+                    $this->rules->applyClockInRules($row, $staff);
 
-                $this->subscription->recordScan($staff->id);
+                    $isDayOff = $this->schedules->effectiveShift($staff, $today)['is_day_off'] ?? false;
+                    if ($isDayOff) {
+                        $row->is_late = false;
+                        $row->late_minutes = 0;
+                    }
 
-                return $this->successPayload($staff, 'in', $now, $row);
+                    $row->save();
+                    $this->subscription->recordScan($staff->id);
+
+                    return $this->successPayload($staff, 'in', $now, $row);
+                } catch (\Illuminate\Database\QueryException $e) {
+                    if (str_contains($e->getMessage(), 'SQLSTATE[23000]') || str_contains($e->getMessage(), 'Duplicate')) {
+                        $row = Attendance::query()
+                            ->where('staff_id', $staff->id)
+                            ->whereDate('date', $today)
+                            ->first();
+
+                        if ($row && $row->clock_out) {
+                            return [
+                                'ok' => false,
+                                'error' => 'already_signed_out',
+                                'message' => 'You\'ve already signed out for today. Try again tomorrow.',
+                            ];
+                        }
+
+                        return $this->successPayload($staff, 'in', $row->clock_in, $row);
+                    }
+
+                    throw $e;
+                }
             }
 
             $lastRecord = $todayRecords->sortByDesc('clock_in')->first();
@@ -129,7 +157,7 @@ class ScanService
             }
 
             $lastRecord->clock_out = $now;
-            $this->rules->applyClockOutRules($lastRecord);
+            $this->rules->applyClockOutRules($lastRecord, $staff);
 $lastRecord->save();
                 $this->subscription->recordScan($staff->id);
 
@@ -162,7 +190,7 @@ $lastRecord->save();
         ];
     }
 
-    private function isOnLeave(Staff $staff): bool
+    private function isOnApprovedLeave(Staff $staff): bool
     {
         $today = Carbon::today();
 
@@ -170,7 +198,7 @@ $lastRecord->save();
             ->where('staff_id', $staff->id)
             ->where('start_date', '<=', $today)
             ->where('end_date', '>=', $today)
-            ->whereIn('status', ['Pending', 'Approved'])
+            ->where('status', 'Approved')
             ->exists();
     }
 }

@@ -10,7 +10,7 @@ class ScheduleService
 {
     public function effectiveShift(Staff $staff, Carbon $date): array
     {
-        $dayOfWeek = (int) $date->format('w');
+        $dayOfWeek = $date->format('w');
 
         $schedule = StaffSchedule::query()
             ->where('staff_id', $staff->id)
@@ -26,14 +26,14 @@ class ScheduleService
             ];
         }
 
-        if ($schedule && $schedule->shift_start && $schedule->shift_end) {
-            return [
-                'is_day_off' => false,
-                'shift_start' => $schedule->shift_start,
-                'shift_end' => $schedule->shift_end,
-                'break_minutes' => (int) $schedule->break_minutes,
-            ];
-        }
+if ($schedule && $schedule->shift_start && $schedule->shift_end) {
+                return [
+                    'is_day_off' => false,
+                    'shift_start' => $schedule->shift_start,
+                    'shift_end' => $schedule->shift_end,
+                    'break_minutes' => (int) $schedule->break_minutes,
+                ];
+            }
 
         return [
             'is_day_off' => false,

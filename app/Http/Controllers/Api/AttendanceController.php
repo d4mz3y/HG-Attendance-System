@@ -162,10 +162,10 @@ class AttendanceController extends Controller
             $attendance->break_minutes = (int) ($data['break_minutes'] ?? $attendance->break_minutes);
             $attendance->date = $data['date'];
 
-            $this->rules->applyClockInRules($attendance);
+$this->rules->applyClockInRules($attendance, $attendance->staff);
 
-            if ($clockOut) {
-                $this->rules->applyClockOutRules($attendance);
+        if ($clockOut) {
+            $this->rules->applyClockOutRules($attendance, $attendance->staff);
             } else {
                 $attendance->total_hours = null;
                 $attendance->overtime_minutes = 0;
@@ -195,10 +195,10 @@ class AttendanceController extends Controller
             'break_minutes' => (int) ($data['break_minutes'] ?? 0),
         ]);
 
-        $this->rules->applyClockInRules($attendance);
+        $this->rules->applyClockInRules($attendance, $staff);
 
         if ($clockOut) {
-            $this->rules->applyClockOutRules($attendance);
+            $this->rules->applyClockOutRules($attendance, $staff);
         }
 
         $attendance->save();

@@ -2,14 +2,16 @@ services:
   mysql:
     image: mysql:8.4
     environment:
-      MYSQL_DATABASE: hg_attendance
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: ${DB_DATABASE:-hg_attendance}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-change_me_root}
+      MYSQL_USER: ${DB_USERNAME:-hg_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-change_me_app}
     ports:
       - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-proot"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-u${DB_USERNAME:-hg_user}", "-p${DB_PASSWORD:-change_me_app}"]
       interval: 4s
       timeout: 5s
       retries: 20
@@ -26,17 +28,17 @@ services:
       - .env.docker
     environment:
       APP_NAME: "Hogan Guards Attendance"
-      APP_ENV: local
-      APP_DEBUG: "true"
+      APP_ENV: production
+      APP_DEBUG: "false"
       APP_URL: http://localhost:8000
       APP_TIMEZONE: Africa/Lagos
       LOG_CHANNEL: stderr
       DB_CONNECTION: mysql
       DB_HOST: mysql
       DB_PORT: "3306"
-      DB_DATABASE: hg_attendance
-      DB_USERNAME: root
-      DB_PASSWORD: root
+      DB_DATABASE: ${DB_DATABASE:-hg_attendance}
+      DB_USERNAME: ${DB_USERNAME:-hg_user}
+      DB_PASSWORD: ${DB_PASSWORD:-change_me_app}
       CACHE_STORE: file
       QUEUE_CONNECTION: sync
       SESSION_DRIVER: file
@@ -47,5 +49,5 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-volumes:
-  mysql_data:
+  volumes:
+    mysql_data:

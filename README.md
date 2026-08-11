@@ -74,14 +74,17 @@ npm run dev
 
 With `npm run dev`, set `APP_URL` to match the Laravel server URL so generated storage URLs resolve correctly.
 
-## Default admin (seeded)
+## Security
 
-| Field    | Value       |
-|----------|-------------|
-| Username | `admin`     |
-| Password | `admin123` |
+> **Change all default credentials before deploying to production.**
+> The seeder creates predictable admin credentials. Update the `users` table immediately after first boot, or add a forced password-change flow.
 
-Change the password immediately in production (update the `users` table or add a change-password flow later).
+- Default admin username: `admin`
+- Default admin password: `admin123`
+- Super-admin username: `superadmin`
+- Super-admin password: `super123`
+
+Docker defaults (`APP_DEBUG`, database credentials) are also set to development values — override them with `.env.docker` or environment variables in production.
 
 ## Sample barcodes
 

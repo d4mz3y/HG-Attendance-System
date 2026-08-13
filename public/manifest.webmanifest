@@ -1,0 +1,12 @@
+{
+  "name": "Hogan Guards Attendance Kiosk",
+  "short_name": "HG Attendance",
+  "start_url": "/scan",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#020617",
+  "theme_color": "#113c63",
+  "icons": [
+    { "src": "/logo.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}

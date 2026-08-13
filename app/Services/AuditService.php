@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Attendance;
 use App\Models\AttendanceAudit;
-use Carbon\Carbon;
 
 class AuditService
 {
@@ -21,23 +20,27 @@ class AuditService
         ]);
     }
 
-    public function forAttendance(int $attendanceId): array
+    public function forAttendance(int $attendanceId, bool $includeTechnicalDetails = false): array
     {
         return AttendanceAudit::query()
             ->with('changer')
             ->where('attendance_id', $attendanceId)
             ->orderByDesc('created_at')
             ->get()
-            ->map(fn ($a) => [
-                'id' => $a->id,
-                'changed_fields' => $a->changed_fields,
-                'old_values' => $a->old_values,
-                'new_values' => $a->new_values,
-                'reason' => $a->reason,
-                'changed_by' => $a->changer?->username,
-                'ip_address' => $a->ip_address,
-                'created_at' => $a->created_at?->toIso8601String(),
-            ])
+            ->map(function (AttendanceAudit $audit) use ($includeTechnicalDetails): array {
+                $row = [
+                    'id' => $audit->id,
+                    'reason' => $audit->reason,
+                    'changed_by' => $audit->changer?->username,
+                    'created_at' => $audit->created_at?->toIso8601String(),
+                ];
+
+                if ($includeTechnicalDetails) {
+                    $row['ip_address'] = $audit->ip_address;
+                }
+
+                return $row;
+            })
             ->all();
     }
 }

@@ -1,6 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import StaffPicker from '../components/StaffPicker';
+import TimePicker from '../components/TimePicker';
 import { useToast } from '../components/Toast';
+import { useAuth } from '../AuthContext';
+import { formatTime } from '../timeFormat';
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -13,6 +17,36 @@ const EMPTY_SCHEDULE = {
     works_on_public_holiday: false,
 };
 
+const comparable = (schedule) => JSON.stringify({
+    shift_start: schedule?.shift_start ?? null,
+    shift_end: schedule?.shift_end ?? null,
+    break_minutes: Number(schedule?.break_minutes ?? 0),
+    is_day_off: Boolean(schedule?.is_day_off),
+    works_on_public_holiday: Boolean(schedule?.works_on_public_holiday),
+});
+
+function mergeWithDefaults(explicit, defaults) {
+    return defaults.map((fallback) => {
+        const override = explicit.find((item) => Number(item.day_of_week) === Number(fallback.day_of_week));
+        return override ?? fallback;
+    });
+}
+
+function aggregateDepartment(members, defaults) {
+    if (!members.length) return [];
+
+    return defaults.map((fallback) => {
+        const effective = members.map((member) => (
+            member.schedules?.find((item) => Number(item.day_of_week) === Number(fallback.day_of_week)) ?? fallback
+        ));
+        const mixed = new Set(effective.map(comparable)).size > 1;
+
+        return mixed
+            ? { ...fallback, id: `department-${fallback.day_of_week}`, mixed: true, inherited: false }
+            : { ...effective[0], id: `department-${fallback.day_of_week}`, mixed: false };
+    });
+}
+
 export default function Schedules() {
     const [staff, setStaff] = useState([]);
     const [departments, setDepartments] = useState([]);
@@ -23,11 +57,20 @@ export default function Schedules() {
     const [saving, setSaving] = useState(false);
     const [loading, setLoading] = useState(false);
     const [mode, setMode] = useState('staff');
+    const [defaults, setDefaults] = useState([]);
+    const [departmentMemberCount, setDepartmentMemberCount] = useState(0);
     const { addToast } = useToast();
+    const { can } = useAuth();
+    const canManage = can('schedule.manage');
 
     useEffect(() => {
         api.get('/lookups/departments').then((r) => setDepartments(r.data));
         api.get('/lookups/staff').then((r) => setStaff(r.data));
+        api.get('/schedules/defaults').then((r) => {
+            const nextDefaults = Array.isArray(r.data) ? r.data : [];
+            setDefaults(nextDefaults);
+            if (nextDefaults[0]) setForm(nextDefaults[0]);
+        });
     }, []);
 
     const loadSchedules = (id, type = 'staff') => {
@@ -41,9 +84,17 @@ export default function Schedules() {
             : `/schedules/${id}`;
         api.get(endpoint)
             .then((r) => {
-                setSchedules(r.data);
-                if (type === 'staff') setSelectedStaff(id);
-                if (type === 'department') setSelectedDepartment(id);
+                if (type === 'department') {
+                    const members = Array.isArray(r.data) ? r.data : [];
+                    setDepartmentMemberCount(members.length);
+                    setSchedules(aggregateDepartment(members, defaults));
+                    setSelectedDepartment(id);
+                } else {
+                    const explicit = Array.isArray(r.data) ? r.data : [];
+                    setDepartmentMemberCount(0);
+                    setSchedules(mergeWithDefaults(explicit, defaults));
+                    setSelectedStaff(id);
+                }
             })
             .finally(() => setLoading(false));
     };
@@ -54,17 +105,20 @@ export default function Schedules() {
     };
 
     const openNew = () => {
-        setForm(EMPTY_SCHEDULE);
+        setForm(defaults[0] ?? EMPTY_SCHEDULE);
     };
 
     const editSchedule = (item) => {
+        const source = item.mixed
+            ? (defaults.find((fallback) => Number(fallback.day_of_week) === Number(item.day_of_week)) ?? item)
+            : item;
         setForm({
-            day_of_week: item.day_of_week,
-            shift_start: item.shift_start || '',
-            shift_end: item.shift_end || '',
-            break_minutes: item.break_minutes,
-            is_day_off: item.is_day_off,
-            works_on_public_holiday: item.works_on_public_holiday || false,
+            day_of_week: source.day_of_week,
+            shift_start: source.shift_start || '',
+            shift_end: source.shift_end || '',
+            break_minutes: source.break_minutes,
+            is_day_off: source.is_day_off,
+            works_on_public_holiday: source.works_on_public_holiday || false,
         });
     };
 
@@ -82,7 +136,7 @@ export default function Schedules() {
                 : `/schedules/${targetId}`;
             await api.put(endpoint, payload);
             loadSchedules(targetId, mode);
-            setForm(EMPTY_SCHEDULE);
+            setForm(defaults[0] ?? EMPTY_SCHEDULE);
         } catch (err) {
             addToast(err.response?.data?.message ?? 'Unable to save schedule', 'error');
         } finally {
@@ -90,35 +144,19 @@ export default function Schedules() {
         }
     };
 
-    const bulkSave = async () => {
+    const resetToDefaults = async () => {
         const targetId = mode === 'department' ? selectedDepartment : selectedStaff;
         if (! targetId) {
             return;
         }
-        const defaultSchedule = {
-            day_of_week: 1,
-            shift_start: '08:00',
-            shift_end: '17:00',
-            break_minutes: 60,
-            is_day_off: false,
-            works_on_public_holiday: false,
-        };
-        const items = DAY_NAMES.map((_, i) => ({
-            day_of_week: i,
-            shift_start: defaultSchedule.shift_start,
-            shift_end: defaultSchedule.shift_end,
-            break_minutes: 60,
-            is_day_off: i === 0 || i === 6,
-            works_on_public_holiday: false,
-        }));
-
         setSaving(true);
         try {
             const endpoint = mode === 'department'
                 ? `/schedules/department/${encodeURIComponent(targetId)}`
                 : `/schedules/${targetId}`;
-            await api.put(endpoint, { schedules: items });
+            await api.delete(endpoint);
             loadSchedules(targetId, mode);
+            addToast('Explicit schedule rules removed; current system defaults now apply.', 'success');
         } catch (err) {
             addToast(err.response?.data?.message ?? 'Unable to save schedule', 'error');
         } finally {
@@ -146,12 +184,13 @@ export default function Schedules() {
                 {mode === 'staff' ? (
                     <label className="block text-sm font-medium text-slate-700">
                         Select staff
-                        <select className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={selectedStaff} onChange={(e) => loadSchedules(e.target.value, 'staff')}>
-                            <option value="">Choose a staff member</option>
-                            {staff.map((s) => (
-                                <option key={s.id} value={s.id}>{s.full_name} ({s.staff_id})</option>
-                            ))}
-                        </select>
+                        <StaffPicker
+                            className="mt-1"
+                            options={staff}
+                            value={selectedStaff}
+                            onChange={(value) => loadSchedules(value, 'staff')}
+                            emptyLabel="Choose a staff member"
+                        />
                     </label>
                 ) : (
                     <label className="block text-sm font-medium text-slate-700">
@@ -168,10 +207,10 @@ export default function Schedules() {
 
             {(selectedStaff || selectedDepartment) && (
                 <>
-                    <div className="flex justify-end gap-2">
+                    {canManage && <div className="flex justify-end gap-2">
                         <button type="button" onClick={openNew} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Add rule</button>
-                        <button type="button" onClick={bulkSave} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800">Reset to default</button>
-                    </div>
+                        <button type="button" onClick={resetToDefaults} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-800">Use system defaults</button>
+                    </div>}
 
                     <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
                         <table className="min-w-full text-left text-sm">
@@ -194,13 +233,13 @@ export default function Schedules() {
                                 ) : schedules.map((s) => (
                                     <tr key={s.id} className="hover:bg-slate-50">
                                         <td className="px-3 py-2 font-medium">{s.day_name}</td>
-                                        <td className="px-3 py-2 whitespace-nowrap">{s.shift_start || '—'}</td>
-                                        <td className="px-3 py-2 whitespace-nowrap">{s.shift_end || '—'}</td>
-                                        <td className="px-3 py-2">{s.break_minutes}</td>
-                                        <td className="px-3 py-2">{s.is_day_off ? 'Yes' : 'No'}</td>
-                                        <td className="px-3 py-2">{s.works_on_public_holiday ? 'Yes' : 'No'}</td>
+                                        <td className="px-3 py-2 whitespace-nowrap">{s.mixed ? 'Mixed' : formatTime(s.shift_start)}</td>
+                                        <td className="px-3 py-2 whitespace-nowrap">{s.mixed ? 'Mixed' : formatTime(s.shift_end)}</td>
+                                        <td className="px-3 py-2">{s.mixed ? 'Mixed' : s.break_minutes}</td>
+                                        <td className="px-3 py-2">{s.mixed ? 'Mixed' : (s.is_day_off ? 'Yes' : 'No')}</td>
+                                        <td className="px-3 py-2">{s.mixed ? 'Mixed' : (s.works_on_public_holiday ? 'Yes' : 'No')}</td>
                                         <td className="px-3 py-2 text-right">
-                                            <button type="button" onClick={() => editSchedule(s)} className="text-xs font-semibold text-sky-700 underline">Edit</button>
+                                            {canManage && <button type="button" onClick={() => editSchedule(s)} className="text-xs font-semibold text-sky-700 underline">{s.mixed ? 'Set for all' : 'Edit'}</button>}
                                         </td>
                                     </tr>
                                 ))}
@@ -208,7 +247,7 @@ export default function Schedules() {
                         </table>
                     </div>
 
-                            {(form.day_of_week !== undefined) && (
+                            {canManage && (form.day_of_week !== undefined) && (
                                 <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
                                     <h3 className="text-lg font-bold text-slate-900">{schedules.find((s) => s.day_of_week === form.day_of_week) ? 'Edit rule' : 'Add rule'}</h3>
                                     <form onSubmit={submit} className="mt-4 grid gap-4 sm:grid-cols-2">
@@ -222,11 +261,11 @@ export default function Schedules() {
                                         </label>
                                         <label className="block text-sm font-medium text-slate-700">
                                             Shift start
-                                            <input type="time" name="shift_start" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.shift_start} onChange={change} disabled={form.is_day_off} />
+                                            <TimePicker name="shift_start" value={form.shift_start} onChange={change} disabled={form.is_day_off} allowEmpty className="mt-1" selectClassName="flex-1" ariaLabel="Shift start" />
                                         </label>
                                         <label className="block text-sm font-medium text-slate-700">
                                             Shift end
-                                            <input type="time" name="shift_end" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.shift_end} onChange={change} disabled={form.is_day_off} />
+                                            <TimePicker name="shift_end" value={form.shift_end} onChange={change} disabled={form.is_day_off} allowEmpty className="mt-1" selectClassName="flex-1" ariaLabel="Shift end" />
                                         </label>
                                         <label className="block text-sm font-medium text-slate-700">
                                             Break (minutes)

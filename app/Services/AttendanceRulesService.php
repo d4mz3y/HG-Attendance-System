@@ -4,10 +4,8 @@ namespace App\Services;
 
 use App\Models\Attendance;
 use App\Models\PublicHoliday;
-use App\Models\Setting;
 use App\Models\Staff;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 
 class AttendanceRulesService
 {
@@ -18,15 +16,18 @@ class AttendanceRulesService
 
     public function applyClockInRules(Attendance $row, ?Staff $staff = null): void
     {
-        if ($this->isHoliday($row->date)) {
-            $row->is_late = false;
-            $row->late_minutes = 0;
-            return;
-        }
-
         $shift = $staff
             ? $this->schedules->effectiveShift($staff, $row->date)
             : null;
+
+        if (($shift['is_day_off'] ?? false)
+            || ($this->isHoliday($row->date) && ! ($shift['works_on_public_holiday'] ?? false))
+            || (int) ($row->session_number ?? 1) > 1) {
+            $row->is_late = false;
+            $row->late_minutes = 0;
+
+            return;
+        }
 
         $shiftStart = $shift['shift_start'] ?? $this->config->shiftStart()->format('H:i');
         if ($shiftStart instanceof \DateTimeInterface) {
@@ -35,11 +36,12 @@ class AttendanceRulesService
         $shiftStart = substr((string) $shiftStart, 0, 5);
 
         $clockIn = $row->clock_in->copy();
-        $grace = (int) Setting::getValue('grace_period_minutes', '0');
+        $grace = $this->config->gracePeriodMinutes();
 
-        if ($shiftStart === '' || $shiftStart === null) {
+        if ($shiftStart === '') {
             $row->is_late = false;
             $row->late_minutes = 0;
+
             return;
         }
 
@@ -65,6 +67,17 @@ class AttendanceRulesService
             ? $this->schedules->effectiveShift($staff, $row->date)
             : null;
 
+        $minutes = (int) $row->clock_in->diffInMinutes($row->clock_out);
+        $break = min($minutes, (int) ($row->break_minutes ?? 0));
+        $row->total_hours = round(max(0, $minutes - $break) / 60, 2);
+
+        if (($shift['is_day_off'] ?? false)
+            || ($this->isHoliday($row->date) && ! ($shift['works_on_public_holiday'] ?? false))) {
+            $row->overtime_minutes = max(0, $minutes - $break);
+
+            return;
+        }
+
         $shiftEnd = $shift['shift_end'] ?? $this->config->shiftEnd()->format('H:i');
         if ($shiftEnd instanceof \DateTimeInterface) {
             $shiftEnd = $shiftEnd->format('H:i');
@@ -73,15 +86,22 @@ class AttendanceRulesService
 
         $clockOut = $row->clock_out->copy();
 
-        if ($shiftEnd === '' || $shiftEnd === null) {
+        if ($shiftEnd === '') {
             $row->overtime_minutes = 0;
-            $minutes = (int) $row->clock_in->diffInMinutes($row->clock_out);
-            $break = (int) ($row->break_minutes ?? 0);
-            $row->total_hours = round(max(0, $minutes - $break) / 60, 2);
+
             return;
         }
 
         $boundary = Carbon::parse($row->date->format('Y-m-d').' '.$shiftEnd, $clockOut->timezone);
+        $shiftStart = $shift['shift_start'] ?? $this->config->shiftStart()->format('H:i');
+        if ($shiftStart instanceof \DateTimeInterface) {
+            $shiftStart = $shiftStart->format('H:i');
+        }
+        $shiftStart = substr((string) $shiftStart, 0, 5);
+
+        if ($shiftStart !== '' && $shiftEnd <= $shiftStart) {
+            $boundary->addDay();
+        }
 
         if ($clockOut->greaterThan($boundary)) {
             $row->overtime_minutes = (int) $boundary->diffInMinutes($clockOut);
@@ -89,24 +109,10 @@ class AttendanceRulesService
             $row->overtime_minutes = 0;
         }
 
-        $minutes = (int) $row->clock_in->diffInMinutes($row->clock_out);
-        $break = (int) ($row->break_minutes ?? 0);
-        $row->total_hours = round(max(0, $minutes - $break) / 60, 2);
     }
 
-    private function isHoliday(Carbon $date): bool
+    public function isHoliday(Carbon $date): bool
     {
-        $dateStr = $date->toDateString();
-        $monthDay = $date->format('m-d');
-
-        return PublicHoliday::query()
-            ->where(function ($q) use ($dateStr, $monthDay) {
-                $q->whereDate('date', $dateStr)
-                  ->orWhere(function ($q2) use ($monthDay) {
-                      $q2->where('is_recurring', true)
-                         ->whereRaw("DATE_FORMAT(date, '%m-%d') = ?", [$monthDay]);
-                  });
-            })
-            ->exists();
+        return PublicHoliday::occursOn($date);
     }
 }

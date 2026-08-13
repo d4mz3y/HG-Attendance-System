@@ -8,71 +8,41 @@ use Maatwebsite\Excel\Concerns\ShouldAutoSize;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithStyles;
 use Maatwebsite\Excel\Concerns\WithTitle;
+use PhpOffice\PhpSpreadsheet\Style\Fill;
 use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 
-class AttendanceReportExport implements FromCollection, WithHeadings, WithTitle, WithStyles, ShouldAutoSize
+class AttendanceReportExport implements FromCollection, ShouldAutoSize, WithHeadings, WithStyles, WithTitle
 {
-    public function __construct(
-        protected Collection $rows
-    ) {}
+    public function __construct(protected Collection $rows) {}
 
     public function collection(): Collection
     {
-        $mainRows = $this->rows->map(fn (array $r) => [
-            $r['full_name'],
-            $r['staff_code'],
-            $r['department'],
-            $r['date'],
-            $r['clock_in'],
-            $r['clock_out'],
-            $r['total_hours'],
-            $r['late_minutes'],
-            $r['overtime_minutes'],
-            $r['notes'] ?? '',
-            $r['status'],
+        return $this->rows->map(fn (array $row) => [
+            $this->safe($row['full_name']),
+            $this->safe($row['staff_code']),
+            $this->safe($row['company'] ?? ''),
+            $this->safe($row['branch'] ?? ''),
+            $this->safe($row['department']),
+            $row['date'],
+            $this->safe($row['holiday_name'] ?? ''),
+            $row['session_number'] ?? '',
+            $row['clock_in'],
+            $row['clock_out'],
+            $row['total_hours'],
+            $row['break_minutes'] ?? '',
+            $row['late_minutes'],
+            $row['overtime_minutes'],
+            $this->safe($row['notes'] ?? ''),
+            $row['status'],
         ]);
-
-        $publicHolidayRows = $this->rows
-            ->filter(fn (array $r) => $r['status'] === 'Public Holiday Work')
-            ->map(fn (array $r) => [
-                $r['full_name'],
-                $r['staff_code'],
-                $r['department'],
-                $r['date'],
-                $r['clock_in'],
-                $r['clock_out'],
-                $r['total_hours'],
-                $r['late_minutes'],
-                $r['overtime_minutes'],
-                $r['notes'] ?? '',
-                $r['status'],
-            ]);
-
-        if ($publicHolidayRows->isNotEmpty()) {
-            $mainRows = $mainRows->concat([
-                [],
-                ['PUBLIC HOLIDAY WORK RECORDS'],
-                ['Full Name', 'Staff ID', 'Department', 'Date', 'Clock In', 'Clock Out', 'Total Hours', 'Late (minutes)', 'Overtime (minutes)', 'Notes', 'Status'],
-            ])->concat($publicHolidayRows);
-        }
-
-        return $mainRows;
     }
 
     public function headings(): array
     {
         return [
-            'Full Name',
-            'Staff ID',
-            'Department',
-            'Date',
-            'Clock In',
-            'Clock Out',
-            'Total Hours Worked',
-            'Late (minutes)',
-            'Overtime (minutes)',
-            'Notes',
-            'Status',
+            'Full Name', 'Staff ID', 'Company', 'Branch', 'Department', 'Date', 'Holiday', 'Session',
+            'Clock In', 'Clock Out', 'Total Hours Worked', 'Break (minutes)', 'Late (minutes)',
+            'Overtime (minutes)', 'Notes', 'Status',
         ];
     }
 
@@ -81,68 +51,43 @@ class AttendanceReportExport implements FromCollection, WithHeadings, WithTitle,
         return 'Attendance';
     }
 
-    public function styles(Worksheet $sheet)
+    public function styles(Worksheet $sheet): array
     {
-        $highestRow = $sheet->getHighestRow();
-        $highestColumn = $sheet->getHighestColumn();
-
         $styles = [
             1 => [
                 'font' => ['bold' => true, 'color' => ['rgb' => 'FFFFFF']],
                 'fill' => [
-                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => '1e3a8a'],
+                    'fillType' => Fill::FILL_SOLID,
+                    'startColor' => ['rgb' => '1E3A8A'],
                 ],
             ],
         ];
+        $colours = [
+            'Late' => 'FEE2E2', 'Absent' => 'FEE2E2', 'On Time' => 'DCFCE7',
+            'Incomplete' => 'FEF3C7', 'Overtime' => 'DBEAFE', 'Late + Overtime' => 'DBEAFE',
+            'On Leave' => 'E5E7EB', 'Day Off' => 'F3E8FF', 'Public Holiday' => 'FFFBEB',
+            'Public Holiday Work' => 'FFFBEB', 'Public Holiday Work (Incomplete)' => 'FEF3C7',
+        ];
 
-        for ($row = 2; $row <= $highestRow; $row++) {
-            $statusCell = 'K' . $row;
-            $statusValue = $sheet->getCell($statusCell)->getValue();
-
-            $rowStyles = [];
-            if ($statusValue === 'Late' || $statusValue === 'Absent') {
-                $rowStyles['fill'] = [
-                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => 'FEE2E2'],
+        for ($row = 2; $row <= $sheet->getHighestRow(); $row++) {
+            $status = (string) $sheet->getCell('P'.$row)->getValue();
+            if (isset($colours[$status])) {
+                $styles[$row] = [
+                    'fill' => [
+                        'fillType' => Fill::FILL_SOLID,
+                        'startColor' => ['rgb' => $colours[$status]],
+                    ],
                 ];
-            } elseif ($statusValue === 'On Time') {
-                $rowStyles['fill'] = [
-                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => 'DCFCE7'],
-                ];
-            } elseif ($statusValue === 'Incomplete') {
-                $rowStyles['fill'] = [
-                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => 'FEF3C7'],
-                ];
-            } elseif ($statusValue === 'Overtime' || $statusValue === 'Late + Overtime') {
-                $rowStyles['fill'] = [
-                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => 'DBEAFE'],
-                ];
-            } elseif ($statusValue === 'On Leave') {
-                $rowStyles['fill'] = [
-                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => 'E5E7EB'],
-                ];
-            } elseif ($statusValue === 'Day Off') {
-                $rowStyles['fill'] = [
-                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => 'F3E8FF'],
-                ];
-            } elseif ($statusValue === 'Public Holiday Work') {
-                $rowStyles['fill'] = [
-                    'fillType' => \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_SOLID,
-                    'startColor' => ['rgb' => 'FFFBEB'],
-                ];
-            }
-
-            if ($rowStyles) {
-                $styles[$row] = $rowStyles;
             }
         }
 
         return $styles;
+    }
+
+    private function safe(mixed $value): string
+    {
+        $value = (string) $value;
+
+        return preg_match('/^[=+\-@]/', $value) ? "'".$value : $value;
     }
 }

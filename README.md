@@ -1,121 +1,84 @@
-# Hogan Guards HQ — Barcode attendance
+# Hogan Guards Attendance
 
-Laravel 11 + React (Vite) + Tailwind CSS + MySQL. Public kiosk scan route at `/scan`; admin UI under `/dashboard` (Sanctum personal access tokens).
+An internal attendance, scheduling, leave, and reporting system for Hogan Guards. The application uses Laravel 12, React 19, MySQL 8.4, and a production Docker image containing Nginx and PHP-FPM.
 
-## Requirements
+The supported production topology is one office server, trusted internal-CA HTTPS over explicit LAN/ZeroTier addresses, and encrypted external-drive backups. HTTPS is required for the offline kiosk service worker. See [DEPLOYMENT.md](DEPLOYMENT.md) for the complete certificate, build, firewall, backup, restore, Paystack, SMTP, and upgrade procedure.
 
-- PHP 8.2+ with extensions: `pdo_mysql`, `mbstring`, `openssl`, `tokenizer`, `xml`, `ctype`, `json`, `fileinfo`, **`gd`** (staff photo validation, **QR code and Code 128 barcode PNG exports**, and PhpSpreadsheet-related rendering), `zip` (for Excel / PhpSpreadsheet)
+## Requirements for local development
+
+- PHP 8.4
 - Composer 2
-- Node.js 20+ and npm
-- MySQL 8 (or compatible)
-
-## Run with Docker (full stack)
-
-If you have [Docker Engine](https://docs.docker.com/engine/install/) and Docker Compose v2:
-
-```bash
-cd "/path/to/HG Attendance System"
-docker compose up --build
-```
-
-Then open:
-
-- **App / kiosk:** [http://localhost:8000](http://localhost:8000) — scan terminal: [http://localhost:8000/scan](http://localhost:8000/scan)
-- **MySQL** (optional host access): `127.0.0.1:3307` — database `hg_attendance`, user `root`, password `root`
-
-The first boot runs `composer install`, `npm ci` + `npm run build`, migrations, and seeders inside the `app` container. Stop with `docker compose down` (add `-v` to drop the database volume).
+- Node.js 22 and npm
+- MySQL 8.4, or SQLite for the automated test suite
+- PHP extensions: `bcmath`, `curl`, `dom`, `fileinfo`, `gd`, `intl`, `mbstring`, `openssl`, `pdo_mysql`, `pdo_sqlite`, `simplexml`, `tokenizer`, `xml`, `xmlreader`, `xmlwriter`, and `zip`
 
 ## Local setup
 
-1. **Clone / copy** the project and enter the directory.
-
-2. **Install PHP dependencies**
-
 ```bash
 composer install
-```
-
-This pulls `endroid/qr-code` and `picqer/php-barcode-generator` for staff code downloads; both PNG paths use PHP’s **GD** extension (`gd`).
-
-3. **Environment**
-
-```bash
+npm ci
 cp .env.example .env
 php artisan key:generate
-```
-
-Edit `.env` and set `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, and `APP_URL` (include port if you use `php artisan serve`, e.g. `http://127.0.0.1:8000`).
-
-**Cache (scan debounce):** The kiosk uses `Cache::add()` for a 1-second anti-double-wedge lock and relies on your default cache store. `.env.example` sets `CACHE_STORE=database`, which requires the `cache` / `cache_locks` tables from migrations. For a single-server LAN install you may prefer `CACHE_STORE=file` (no extra DB tables). Redis is optional.
-
-**Queue:** Default `QUEUE_CONNECTION=database` in `config/queue.php` expects the `jobs` tables from migrations. If you are not dispatching jobs, `QUEUE_CONNECTION=sync` in `.env` avoids queue worker setup.
-
-4. **Database**
-
-```bash
-php artisan migrate --force
-php artisan db:seed --force
-php artisan storage:link
-```
-
-5. **Frontend**
-
-```bash
-npm install
+php artisan migrate
+php artisan db:seed
+php artisan users:create-super-admin system.owner
+php artisan users:upsert it.manager it_manager
 npm run build
+php artisan serve
 ```
 
-For local development with hot reload, run in two terminals:
+`DatabaseSeeder` creates non-secret application defaults only. It does not create demonstration staff or predictable user accounts. First create the one super administrator with `users:create-super-admin`; it only works interactively when no super administrator exists. If upgrading an old installation that has a legacy `admin` account but no super administrator, give that account's username to the same command to promote and recover it. Create HR, HR assistant, and IT accounts with `users:upsert`; omit `--password` so the password is entered privately instead of being stored in shell history.
+
+If the super administrator forgets their password, use the server's local terminal only (do not run it remotely through a browser shell):
 
 ```bash
-php artisan serve
-npm run dev
+php artisan users:recover-super-admin
 ```
 
-With `npm run dev`, set `APP_URL` to match the Laravel server URL so generated storage URLs resolve correctly.
+The command uses the single existing super-admin account automatically; if there is more than one, pass its username as the final argument. It asks for confirmation and a new hidden password, revokes that account's sessions, and records the recovery. It never runs by itself and does not reset the database.
 
-## Security
+For frontend hot reload, run `npm run dev` in another terminal. Keep `APP_URL` aligned with the Laravel URL so signed links use the correct origin. Do not run `php artisan storage:link`: staff photos are intentionally private and are served only through short-lived signed URLs. If this project contains photos from an older public-storage version, run `php artisan staff:secure-photos` before local use and remove any existing `public/storage` symlink.
 
-> **Change all default credentials before deploying to production.**
-> The seeder creates predictable admin credentials. Update the `users` table immediately after first boot, or add a forced password-change flow.
+## Quality checks
 
-- Default admin username: `admin`
-- Default admin password: `admin123`
-- Super-admin username: `superadmin`
-- Super-admin password: `super123`
+```bash
+composer validate --strict --no-check-publish
+composer audit --locked
+vendor/bin/pint --test
+php artisan test
+npm audit
+npm run build
+npm run check:pwa
+```
 
-Docker defaults (`APP_DEBUG`, database credentials) are also set to development values — override them with `.env.docker` or environment variables in production.
+CI repeats these checks, runs the feature suite against MySQL 8.4, builds the production Docker image, and smoke-tests its TLS endpoint, migrations, scheduler, and required PHP extensions.
 
-## Sample barcodes
+## Operational commands
 
-Seeded staff IDs (encode these on ID cards or type them in the kiosk field):
+```bash
+# List registered scheduled work
+php artisan schedule:list
 
-- `HGL/LA/OPS/001`
-- `HGL/LA/SEC/001`
-- `HGL/LA/ADM/001`
-- `HGL/LA/FIN/001`
-- `HGL/LA/SEC/002`
-- `HGL/LA/OPS/002`
-- `HGL/LA/BOD/001`
-- `HGL/LA/MGT/001`
+# Manually send the configured report for the last completed period
+php artisan reports:send --force
 
-## Behaviour summary
+# Send a deterministic report period during verification
+php artisan reports:send --frequency=weekly --to=2026-08-09
+```
 
-- **Scan (`POST /api/scan`)**: toggles clock-in / clock-out for today; applies shift rules for late minutes and overtime; debounces repeat scans per employee using `scan_debounce_seconds` (default 120s).
-- **Excel export**: Maatwebsite Excel; filename pattern `HoganGuards_Attendance_[Department]_[DateRange].xlsx`.
-- **Staff export**: CSV download from **Staff → Export CSV**.
-- **Staff QR / barcode (admin, Sanctum)**: `GET /api/staff/{id}/codes/qr` and `GET /api/staff/{id}/codes/barcode` return PNG attachments. The encoded value is the public `staff_id` (e.g. `HGL/LA/OPS/001`), matching **`POST /api/scan`** input. The React staff list and staff form expose download actions that call these endpoints with the bearer token.
+Scheduled reports require a working SMTP configuration plus `enable_scheduled_reports`, `report_email`, and `report_frequency` in the Settings screen.
 
-## Deployment notes (HQ LAN server)
+For a kiosk queue blocked by permanently rejected offline events, submit a recovery request from **Device queue**. IT must review and approve that exact device-signed request under **Scan devices**; the kiosk then removes only the approved blocked event IDs and re-signs/resequences what remains. Do not clear browser storage or approve a request without investigating the failures. The full procedure is in [DEPLOYMENT.md](DEPLOYMENT.md).
 
-- Prefer HTTPS on the LAN if possible; keep the kiosk machine on a trusted VLAN.
-- Point the entrance monitor to `/scan` in full-screen browser (F11).
-- Plug the USB scanner; it should type digits/letters and Enter — the hidden field captures input.
-- Ensure Windows / Linux user session does not steal focus from the browser.
+## Security rules
 
-## Troubleshooting
+- Never commit `.env`, `.env.docker`, API keys, passwords, private backup identities, or production database exports.
+- Never run a production seeder to create users.
+- Never publish MySQL or the attendance web port through the internet router.
+- Production clients must use the trusted HTTPS origin. ZeroTier transport encryption alone does not make a plain HTTP page a browser secure context.
+- Treat staff photos, attendance, leave, audit logs, reports, and backups as confidential employee data.
+- Rotate any secret that was previously stored in a committed environment file.
 
-- **Photos 404**: run `php artisan storage:link` and confirm `FILESYSTEM_DISK=public`.
-- **Excel export fails**: install PHP `zip` extension; run `composer install` again.
-- **403 on API after login**: confirm `Authorization: Bearer <token>` is sent (see browser devtools); token is cleared on logout.
-- **Scan errors / slow after deploy**: ensure the cache store is writable (`storage/framework/cache` for `file`, or migrated tables for `database`). If `/up` health checks return HTML instead of “healthy”, confirm `routes/web.php` still excludes the `up` segment from the SPA catch-all.
+## Persistent data
+
+The production Compose stack stores MySQL in `mysql_data` and private application files/runtime data in `app_storage`; disposable Laravel bootstrap caches live in memory. `docker compose down` preserves the data volumes. Do not use `docker compose down -v` on a system containing real data.

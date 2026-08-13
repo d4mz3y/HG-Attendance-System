@@ -7,35 +7,42 @@ export function usePaginatedTable(initialPath, initialFilters = {}) {
     const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
     const [filters, setFilters] = useState(initialFilters);
     const [loading, setLoading] = useState(false);
-    const filtersRef = useRef(filters);
+    const [error, setError] = useState(null);
+    const requestId = useRef(0);
 
     const load = useCallback((page = 1) => {
+        const currentRequest = ++requestId.current;
         setLoading(true);
+        setError(null);
         const params = { page, ...filters };
         Object.keys(params).forEach((key) => {
             if (params[key] === '' || params[key] === null || params[key] === undefined) {
                 delete params[key];
             }
         });
-        api.get(path, { params })
+        return api.get(path, { params })
             .then((r) => {
+                if (currentRequest !== requestId.current) return;
                 setRows(r.data.data);
                 setMeta({
                     current_page: r.data.current_page,
                     last_page: r.data.last_page,
                 });
             })
-            .finally(() => setLoading(false));
+            .catch((requestError) => {
+                if (currentRequest === requestId.current) {
+                    setError(requestError.response?.data?.message || 'Unable to load records.');
+                }
+                return undefined;
+            })
+            .finally(() => {
+                if (currentRequest === requestId.current) setLoading(false);
+            });
     }, [path, filters]);
 
     useEffect(() => {
-        const serialized = JSON.stringify(filters);
-        if (serialized !== JSON.stringify(filtersRef.current)) {
-            filtersRef.current = filters;
-            load(1);
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [path, filters]);
+        void load(1);
+    }, [load]);
 
     const updateFilter = (name, value) => {
         setFilters((f) => ({ ...f, [name]: value }));
@@ -45,5 +52,5 @@ export function usePaginatedTable(initialPath, initialFilters = {}) {
         setPath(newPath);
     };
 
-    return { rows, meta, filters, loading, load, updateFilter, changePath };
+    return { rows, meta, filters, loading, error, load, updateFilter, changePath };
 }

@@ -6,81 +6,91 @@ use App\Models\Attendance;
 use App\Models\Leave;
 use App\Models\PublicHoliday;
 use App\Models\Staff;
-use App\Models\StaffSchedule;
 use Carbon\Carbon;
+use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 
 class ReportRowsService
 {
+    public function __construct(protected ScheduleService $schedules) {}
+
     /**
-     * @param  array{date_from:string,date_to:string,?department:?string,?staff_pk:?int,?status:?string}  $filters
+     * @param  array{date_from:string,date_to:string,department?:?string,company?:?string,branch?:?string,staff_pk?:?int,status?:?string}  $filters
+     * @return Collection<int, array<string, int|string>>
      */
     public function build(array $filters): Collection
     {
         $from = Carbon::parse($filters['date_from'])->startOfDay();
         $to = Carbon::parse($filters['date_to'])->startOfDay();
-
-        $department = $filters['department'] ?? null;
-        $staffPk = $filters['staff_pk'] ?? null;
         $status = $filters['status'] ?? null;
-
-        $staffQuery = Staff::query()->where('employment_status', 'Active');
-        if ($department) {
-            $staffQuery->where('department', $department);
-        }
-        if ($staffPk) {
-            $staffQuery->where('id', $staffPk);
-        }
-        $staffList = $staffQuery->orderBy('full_name')->get();
+        $staffList = $this->staffForRange($filters, $from, $to);
 
         if ($staffList->isEmpty()) {
             return collect();
         }
 
         $staffIds = $staffList->pluck('id')->all();
-        $dateRange = $this->dateRange($from, $to);
-
-        $presentIdsByDate = Attendance::query()
+        $staffById = $staffList->keyBy('id');
+        $dates = $this->dateRange($from, $to);
+        if ($staffList->count() * count($dates) > (int) config('hg.report_max_matrix_cells', 100000)) {
+            throw ValidationException::withMessages([
+                'date_from' => ['This report is too large. Narrow the date, company, branch, department, or staff filters.'],
+            ]);
+        }
+        $attendances = Attendance::query()
+            ->whereIn('staff_id', $staffIds)
             ->whereDate('date', '>=', $from->toDateString())
             ->whereDate('date', '<=', $to->toDateString())
-            ->whereIn('staff_id', $staffIds)
-            ->get()
-            ->groupBy(fn ($a) => $a->date->format('Y-m-d'))
-            ->map(fn ($group) => $group->pluck('staff_id')->all())
-            ->all();
-
-        $leaveByStaffDate = $this->batchLeaves($staffIds, $from, $to);
-        $dayOffByStaffDate = $this->batchDayOffs($staffIds, $from, $to);
-
+            ->orderBy('date')
+            ->orderBy('clock_in')
+            ->get();
+        $present = $attendances
+            ->groupBy(fn (Attendance $attendance) => $attendance->date->toDateString())
+            ->map(fn (Collection $group) => $group->pluck('staff_id')->unique()->flip()->all());
+        $approvedLeave = $this->approvedLeaveDates($staffIds, $from, $to);
+        $scheduleState = $this->scheduleState($staffIds, $dates);
+        $holidayDates = PublicHoliday::occurrencesBetween($from, $to)
+            ->keyBy(fn (PublicHoliday $holiday) => $holiday->date->toDateString());
         $rows = collect();
 
-        if ($status === 'absent') {
-            foreach ($dateRange as $dateStr) {
-                $presentIds = $presentIdsByDate[$dateStr] ?? [];
-
+        if (in_array($status, ['absent', 'day_off', 'on_leave'], true)) {
+            foreach ($dates as $date) {
                 foreach ($staffList as $staff) {
-                    if (in_array($staff->id, $presentIds, true)) {
+                    if (! $this->isEmployedOn($staff, $date)) {
                         continue;
                     }
 
-                    if ($leaveByStaffDate[$staff->id][$dateStr] ?? false) {
-                        $rows->push($this->onLeaveRow($staff, $dateStr));
-                    } elseif ($dayOffByStaffDate[$staff->id][$dateStr] ?? false) {
-                        $rows->push($this->dayOffRow($staff, $dateStr));
-                    } else {
-                        $rows->push($this->absentRow($staff, $dateStr));
+                    $assignment = $this->assignmentForDate($staff, $date);
+                    if (! $this->matchesAssignmentFilters($assignment, $filters)) {
+                        continue;
                     }
-                }
-            }
 
-            return $rows;
-        }
+                    if (isset($present[$date][$staff->id])) {
+                        continue;
+                    }
 
-        if ($status === 'day_off') {
-            foreach ($dateRange as $dateStr) {
-                foreach ($staffList as $staff) {
-                    if ($dayOffByStaffDate[$staff->id][$dateStr] ?? false) {
-                        $rows->push($this->dayOffRow($staff, $dateStr));
+                    $onLeave = $approvedLeave[$staff->id][$date] ?? false;
+                    $shift = $scheduleState[$staff->id][$date];
+                    $isHoliday = $holidayDates->has($date);
+                    $isDayOff = $shift['is_day_off'] || ($isHoliday && ! $shift['works_on_public_holiday']);
+
+                    if ($status === 'on_leave' && $onLeave) {
+                        $rows->push($this->exceptionRow($staff, $assignment, $date, 'On Leave'));
+                    } elseif ($status === 'day_off' && ! $onLeave && $isDayOff) {
+                        $rows->push($this->exceptionRow(
+                            $staff,
+                            $assignment,
+                            $date,
+                            $isHoliday ? 'Public Holiday' : 'Day Off',
+                            $isHoliday ? $holidayDates->get($date)?->name : null
+                        ));
+                    } elseif ($status === 'absent'
+                        && ! $onLeave
+                        && ! $isDayOff
+                        && $this->absenceIsFinal($date, $shift)) {
+                        $rows->push($this->exceptionRow($staff, $assignment, $date, 'Absent'));
                     }
                 }
             }
@@ -89,52 +99,30 @@ class ReportRowsService
         }
 
         if ($status === 'public_holiday_work') {
-            $holidayDates = PublicHoliday::query()
-                ->where(function ($q) use ($from, $to) {
-                    $q->whereBetween('date', [$from->toDateString(), $to->toDateString()])
-                      ->orWhere('is_recurring', true);
-                })
-                ->get()
-                ->pluck('date')
-                ->map(fn ($d) => $d->format('Y-m-d'))
-                ->all();
+            $attendancesByStaffDate = $attendances->groupBy(
+                fn (Attendance $attendance) => $attendance->staff_id.'|'.$attendance->date->toDateString()
+            );
 
-            if (empty($holidayDates)) {
-                return $rows;
-            }
-
-            $attendances = Attendance::query()
-                ->whereIn('staff_id', $staffIds)
-                ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
-                ->with('staff')
-                ->get()
-                ->groupBy('staff_id');
-
-            $schedules = StaffSchedule::query()
-                ->whereIn('staff_id', $staffIds)
-                ->where('is_day_off', false)
-                ->where('works_on_public_holiday', true)
-                ->get()
-                ->groupBy('staff_id');
-
-            foreach ($staffList as $staff) {
-                $staffSchedules = $schedules[$staff->id] ?? collect();
-                $scheduleDays = $staffSchedules->pluck('day_of_week')->all();
-
-                foreach ($holidayDates as $dateStr) {
-                    $dayOfWeek = Carbon::parse($dateStr)->format('w');
-
-                    if (! in_array($dayOfWeek, $scheduleDays, true)) {
+            foreach ($holidayDates as $date => $holiday) {
+                foreach ($staffList as $staff) {
+                    if (! $this->isEmployedOn($staff, $date)) {
                         continue;
                     }
 
-                    $staffAttendances = $attendances[$staff->id] ?? collect();
-                    $attendance = $staffAttendances->first(fn ($a) => $a->date->format('Y-m-d') === $dateStr);
+                    $assignment = $this->assignmentForDate($staff, $date);
+                    if (! $this->matchesAssignmentFilters($assignment, $filters)) {
+                        continue;
+                    }
 
-                    if ($attendance) {
-                        $rows->push($this->attendanceRow($attendance, true));
-                    } else {
-                        $rows->push($this->publicHolidayWorkRow($staff, $dateStr));
+                    $sessions = $attendancesByStaffDate->get($staff->id.'|'.$date, collect());
+                    foreach ($sessions as $attendance) {
+                        $rows->push($this->attendanceRow(
+                            $attendance,
+                            $staff,
+                            $assignment,
+                            $attendance->clock_out ? 'Public Holiday Work' : 'Public Holiday Work (Incomplete)',
+                            $holiday->name
+                        ));
                     }
                 }
             }
@@ -142,228 +130,278 @@ class ReportRowsService
             return $rows;
         }
 
-        $attQuery = Attendance::query()
-            ->with('staff')
-            ->whereBetween('date', [$from->toDateString(), $to->toDateString()]);
+        return $attendances
+            ->filter(function (Attendance $attendance) use ($status, $staffById, $filters): bool {
+                if (! $this->matchesStatus($attendance, $status)) {
+                    return false;
+                }
 
-        if ($department) {
-            $attQuery->whereHas('staff', fn ($q) => $q->where('department', $department));
-        }
-        if ($staffPk) {
-            $attQuery->where('staff_id', $staffPk);
-        }
+                $staff = $staffById->get($attendance->staff_id);
 
-        if ($status === 'late') {
-            $attQuery->where('is_late', true);
-        } elseif ($status === 'on_time') {
-            $attQuery->where('is_late', false)
-                ->whereNotNull('clock_out')
-                ->where('overtime_minutes', 0);
-        } elseif ($status === 'overtime') {
-            $attQuery->where('overtime_minutes', '>', 0);
-        } elseif ($status === 'incomplete') {
-            $attQuery->whereNull('clock_out');
-        }
+                return $staff instanceof Staff
+                    && $this->matchesAssignmentFilters(
+                        $this->assignmentForDate($staff, $attendance->date->toDateString()),
+                        $filters
+                    );
+            })
+            ->map(function (Attendance $attendance) use ($holidayDates, $staffById): array {
+                $holiday = $holidayDates->get($attendance->date->toDateString());
+                /** @var Staff $staff */
+                $staff = $staffById->get($attendance->staff_id);
+                $assignment = $this->assignmentForDate($staff, $attendance->date->toDateString());
 
-        foreach ($attQuery->orderBy('date')->orderBy('clock_in')->cursor() as $a) {
-            if (! $a->staff) {
-                continue;
-            }
-            $rows->push($this->attendanceRow($a));
-        }
-
-        return $rows;
+                return $this->attendanceRow($attendance, $staff, $assignment, holidayName: $holiday?->name);
+            })
+            ->values();
     }
 
     /**
-     * @return array<string, array<int, bool>>
+     * @param  array<string, mixed>  $filters
+     * @return Collection<int, Staff>
      */
-    private function batchLeaves(array $staffIds, Carbon $from, Carbon $to): array
+    private function staffForRange(array $filters, CarbonInterface $from, CarbonInterface $to): Collection
     {
+        $hasAssignmentFilters = collect(['department', 'company', 'branch'])
+            ->contains(fn (string $field): bool => filled($filters[$field] ?? null));
+
+        return Staff::query()
+            ->with(['employmentHistory', 'assignmentHistory'])
+            ->where(function (Builder $range) use ($from, $to): void {
+                $range->where(function (Builder $current) use ($from, $to): void {
+                    $current->where(function (Builder $query) use ($from): void {
+                        $query->where('employment_status', 'Active')
+                            ->orWhereDate('employment_end_date', '>=', $from->toDateString());
+                    })->where(function (Builder $query) use ($to): void {
+                        $query->whereNull('employment_start_date')
+                            ->orWhereDate('employment_start_date', '<=', $to->toDateString());
+                    });
+                })->orWhereHas('employmentHistory', function (Builder $history) use ($from, $to): void {
+                    $history->where('status', 'Active')
+                        ->whereDate('effective_from', '<=', $to->toDateString())
+                        ->where(function (Builder $end) use ($from): void {
+                            $end->whereNull('effective_to')
+                                ->orWhereDate('effective_to', '>=', $from->toDateString());
+                        });
+                });
+            })
+            ->when($hasAssignmentFilters, function (Builder $query) use ($filters, $from, $to): void {
+                $query->where(function (Builder $assignments) use ($filters, $from, $to): void {
+                    $assignments->whereHas('assignmentHistory', function (Builder $history) use ($filters, $from, $to): void {
+                        $history->whereDate('effective_from', '<=', $to->toDateString())
+                            ->where(function (Builder $end) use ($from): void {
+                                $end->whereNull('effective_to')
+                                    ->orWhereDate('effective_to', '>=', $from->toDateString());
+                            });
+                        foreach (['department', 'company', 'branch'] as $field) {
+                            if (filled($filters[$field] ?? null)) {
+                                $history->where($field, $filters[$field]);
+                            }
+                        }
+                    })->orWhere(function (Builder $legacy) use ($filters): void {
+                        $legacy->whereDoesntHave('assignmentHistory');
+                        foreach (['department', 'company', 'branch'] as $field) {
+                            if (filled($filters[$field] ?? null)) {
+                                $legacy->where($field, $filters[$field]);
+                            }
+                        }
+                    });
+                });
+            })
+            ->when($filters['staff_pk'] ?? null, fn (Builder $query, int $staffId) => $query->whereKey($staffId))
+            ->orderBy('full_name')
+            ->get();
+    }
+
+    /** @return array<int, array<string, bool>> */
+    private function approvedLeaveDates(array $staffIds, CarbonInterface $from, CarbonInterface $to): array
+    {
+        $result = array_fill_keys($staffIds, []);
         $leaves = Leave::query()
             ->whereIn('staff_id', $staffIds)
-            ->whereIn('status', ['Pending', 'Approved'])
-            ->where('start_date', '<=', $to->toDateString())
-            ->where('end_date', '>=', $from->toDateString())
-            ->get(['staff_id', 'start_date', 'end_date'])
-            ->groupBy('staff_id');
+            ->where('status', 'Approved')
+            ->whereDate('start_date', '<=', $to->toDateString())
+            ->whereDate('end_date', '>=', $from->toDateString())
+            ->get(['staff_id', 'start_date', 'end_date']);
 
-        $result = [];
-        foreach ($staffIds as $id) {
-            $result[$id] = [];
-        }
-
-        foreach ($leaves as $staffId => $staffLeaves) {
-            $staffDateMap = [];
-            foreach ($staffLeaves as $leave) {
-                $start = Carbon::parse($leave->start_date);
-                $end = Carbon::parse($leave->end_date);
-                $cursor = $start->copy();
-                while ($cursor->lte($end)) {
-                    $staffDateMap[$cursor->toDateString()] = true;
-                    $cursor->addDay();
-                }
+        foreach ($leaves as $leave) {
+            $start = Carbon::parse($leave->start_date)->max(Carbon::instance($from));
+            $end = Carbon::parse($leave->end_date)->min(Carbon::instance($to));
+            foreach ($this->dateRange($start, $end) as $date) {
+                $result[$leave->staff_id][$date] = true;
             }
-            $result[$staffId] = $staffDateMap;
         }
 
         return $result;
     }
 
-    /**
-     * @return array<string, array<int, bool>>
-     */
-    private function batchDayOffs(array $staffIds, Carbon $from, Carbon $to): array
+    /** @return array<int, array<string, array{is_day_off:bool,works_on_public_holiday:bool,shift_start:?string,shift_end:?string,is_overnight:bool,break_minutes:int}>> */
+    private function scheduleState(array $staffIds, array $dates): array
     {
-        $schedules = StaffSchedule::query()
-            ->whereIn('staff_id', $staffIds)
-            ->where('is_day_off', true)
-            ->get(['staff_id', 'day_of_week'])
-            ->groupBy('staff_id');
+        return $this->schedules->effectiveShifts($staffIds, $dates);
+    }
 
-        $result = [];
-        foreach ($staffIds as $id) {
-            $result[$id] = [];
-            $days = $schedules[$id] ?? collect();
-            $dayMap = $days->pluck('day_of_week')->all();
+    private function matchesStatus(Attendance $attendance, ?string $status): bool
+    {
+        return match ($status) {
+            'late' => (bool) $attendance->is_late,
+            'on_time' => ! $attendance->is_late && $attendance->clock_out !== null && (int) $attendance->overtime_minutes === 0,
+            'overtime' => (int) $attendance->overtime_minutes > 0,
+            'incomplete' => $attendance->clock_out === null,
+            null, '' => true,
+            default => false,
+        };
+    }
 
-            foreach ($this->dateRange($from, $to) as $dateStr) {
-                $dayOfWeek = Carbon::parse($dateStr)->format('w');
-                if (in_array($dayOfWeek, $dayMap, true)) {
-                    $result[$id][$dateStr] = true;
-                }
-            }
+    private function isEmployedOn(Staff $staff, string $date): bool
+    {
+        if ($staff->relationLoaded('employmentHistory') && $staff->employmentHistory->isNotEmpty()) {
+            return $staff->employmentHistory->contains(function ($history) use ($date): bool {
+                return $history->status === 'Active'
+                    && $date >= $history->effective_from->toDateString()
+                    && (! $history->effective_to || $date <= $history->effective_to->toDateString());
+            });
         }
 
-        return $result;
+        return (! $staff->employment_start_date
+                || $date >= $staff->employment_start_date->toDateString())
+            && (! $staff->employment_end_date
+                || $date <= $staff->employment_end_date->toDateString());
+    }
+
+    /** @return array{company:string,branch:string,department:string,job_title:?string}|null */
+    private function assignmentForDate(Staff $staff, string $date): ?array
+    {
+        if ($staff->relationLoaded('assignmentHistory') && $staff->assignmentHistory->isNotEmpty()) {
+            $assignment = $staff->assignmentHistory->first(function ($history) use ($date): bool {
+                return $date >= $history->effective_from->toDateString()
+                    && (! $history->effective_to || $date <= $history->effective_to->toDateString());
+            });
+
+            return $assignment ? [
+                'company' => (string) $assignment->company,
+                'branch' => (string) $assignment->branch,
+                'department' => (string) $assignment->department,
+                'job_title' => $assignment->job_title,
+            ] : null;
+        }
+
+        return [
+            'company' => (string) ($staff->company ?? ''),
+            'branch' => (string) ($staff->branch ?? ''),
+            'department' => (string) $staff->department,
+            'job_title' => $staff->job_title,
+        ];
     }
 
     /**
-     * @return string[]
+     * @param  array{company:string,branch:string,department:string,job_title:?string}|null  $assignment
+     * @param  array<string, mixed>  $filters
      */
-    private function dateRange(Carbon $from, Carbon $to): array
+    private function matchesAssignmentFilters(?array $assignment, array $filters): bool
+    {
+        if ($assignment === null) {
+            return false;
+        }
+
+        foreach (['company', 'branch', 'department'] as $field) {
+            if (filled($filters[$field] ?? null) && $assignment[$field] !== $filters[$field]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /** @param array{shift_start:?string,shift_end:?string,is_overnight:bool} $shift */
+    private function absenceIsFinal(string $date, array $shift): bool
+    {
+        if (! $shift['shift_start'] || ! $shift['shift_end']) {
+            return false;
+        }
+
+        $expectedEnd = Carbon::parse($date.' '.$shift['shift_end'], config('app.timezone'));
+        if ($shift['is_overnight']) {
+            $expectedEnd->addDay();
+        }
+
+        return now()->greaterThanOrEqualTo($expectedEnd);
+    }
+
+    /** @return string[] */
+    private function dateRange(CarbonInterface $from, CarbonInterface $to): array
     {
         $dates = [];
-        $cursor = $from->copy();
-        while ($cursor->lte($to)) {
+        $cursor = Carbon::instance($from)->startOfDay();
+        $end = Carbon::instance($to)->startOfDay();
+
+        while ($cursor->lte($end)) {
             $dates[] = $cursor->toDateString();
             $cursor->addDay();
         }
+
         return $dates;
     }
 
-    /**
-     * @return array<string, string>
-     */
-    protected function onLeaveRow(Staff $staff, string $date): array
-    {
+    /** @return array<string, int|string> */
+    private function exceptionRow(
+        Staff $staff,
+        array $assignment,
+        string $date,
+        string $status,
+        ?string $holidayName = null
+    ): array {
         return [
             'full_name' => $staff->full_name,
             'staff_code' => $staff->staff_id,
-            'department' => $staff->department,
+            'company' => $assignment['company'],
+            'branch' => $assignment['branch'],
+            'department' => $assignment['department'],
             'date' => $date,
-            'clock_in' => '—',
-            'clock_out' => '—',
-            'total_hours' => '—',
-            'late_minutes' => '—',
-            'overtime_minutes' => '—',
-            'notes' => '',
-            'status' => 'On Leave',
-        ];
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    protected function dayOffRow(Staff $staff, string $date): array
-    {
-        return [
-            'full_name' => $staff->full_name,
-            'staff_code' => $staff->staff_id,
-            'department' => $staff->department,
-            'date' => $date,
+            'holiday_name' => $holidayName ?? '',
+            'session_number' => '',
             'clock_in' => '',
             'clock_out' => '',
             'total_hours' => '',
             'late_minutes' => '',
             'overtime_minutes' => '',
+            'break_minutes' => '',
             'notes' => '',
-            'status' => 'Day Off',
+            'status' => $status,
         ];
     }
 
-    /**
-     * @return array<string, string>
-     */
-    protected function absentRow(Staff $staff, string $date): array
-    {
-        return [
-            'full_name' => $staff->full_name,
-            'staff_code' => $staff->staff_id,
-            'department' => $staff->department,
-            'date' => $date,
-            'clock_in' => '',
-            'clock_out' => '',
-            'total_hours' => '',
-            'late_minutes' => '',
-            'overtime_minutes' => '',
-            'notes' => '',
-            'status' => 'Absent',
-        ];
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    protected function publicHolidayWorkRow(Staff $staff, string $date): array
-    {
-        return [
-            'full_name' => $staff->full_name,
-            'staff_code' => $staff->staff_id,
-            'department' => $staff->department,
-            'date' => $date,
-            'clock_in' => '',
-            'clock_out' => '',
-            'total_hours' => '',
-            'late_minutes' => '',
-            'overtime_minutes' => '',
-            'notes' => '',
-            'status' => 'Public Holiday Work (Scheduled)',
-        ];
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    protected function attendanceRow(Attendance $a, bool $isPublicHolidayWork = false): array
-    {
-        $staff = $a->staff;
-        $status = 'On Time';
-        if (! $a->clock_out) {
-            $status = 'Incomplete';
-        } else {
-            if ($a->is_late) {
-                $status = $a->overtime_minutes > 0 ? 'Late + Overtime' : 'Late';
-            } elseif ($a->overtime_minutes > 0) {
-                $status = 'Overtime';
-            }
-        }
-
-        if ($isPublicHolidayWork) {
-            $status = 'Public Holiday Work';
-        }
+    /** @return array<string, int|string> */
+    private function attendanceRow(
+        Attendance $attendance,
+        Staff $staff,
+        array $assignment,
+        ?string $forcedStatus = null,
+        ?string $holidayName = null
+    ): array {
+        $status = $forcedStatus ?? match (true) {
+            $attendance->clock_out === null => 'Incomplete',
+            $attendance->is_late && (int) $attendance->overtime_minutes > 0 => 'Late + Overtime',
+            $attendance->is_late => 'Late',
+            (int) $attendance->overtime_minutes > 0 => 'Overtime',
+            default => 'On Time',
+        };
 
         return [
             'full_name' => $staff->full_name,
             'staff_code' => $staff->staff_id,
-            'department' => $staff->department,
-            'date' => $a->date->format('Y-m-d'),
-            'clock_in' => $a->clock_in?->format('H:i') ?? '',
-            'clock_out' => $a->clock_out?->format('H:i') ?? '',
-            'total_hours' => $a->total_hours !== null ? (string) $a->total_hours : '',
-            'late_minutes' => (string) (int) $a->late_minutes,
-            'overtime_minutes' => (string) (int) $a->overtime_minutes,
-            'notes' => $a->notes ?? '',
+            'company' => $assignment['company'],
+            'branch' => $assignment['branch'],
+            'department' => $assignment['department'],
+            'date' => $attendance->date->toDateString(),
+            'holiday_name' => $holidayName ?? '',
+            'session_number' => (int) ($attendance->session_number ?? 1),
+            'clock_in' => $attendance->clock_in?->format('g:i A') ?? '',
+            'clock_out' => $attendance->clock_out?->format('g:i A') ?? '',
+            'total_hours' => $attendance->total_hours !== null ? (string) $attendance->total_hours : '',
+            'late_minutes' => (int) $attendance->late_minutes,
+            'overtime_minutes' => (int) $attendance->overtime_minutes,
+            'break_minutes' => (int) ($attendance->break_minutes ?? 0),
+            'notes' => $attendance->notes ?? '',
             'status' => $status,
         ];
     }

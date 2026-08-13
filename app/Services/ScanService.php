@@ -4,13 +4,18 @@ namespace App\Services;
 
 use App\Models\Attendance;
 use App\Models\Leave;
+use App\Models\PublicHoliday;
 use App\Models\Staff;
+use App\Models\StaffEmploymentHistory;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\Cache;
+use Carbon\CarbonInterface;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
 class ScanService
 {
+    private const MAX_SESSION_HOURS = 72;
+
     public function __construct(
         protected AppConfigService $config,
         protected AttendanceRulesService $rules,
@@ -21,7 +26,7 @@ class ScanService
     /**
      * @return array<string, mixed>
      */
-    public function handleScan(string $rawCode): array
+    public function handleScan(string $rawCode, ?CarbonInterface $occurredAt = null): array
     {
         $code = trim($rawCode);
         if ($code === '') {
@@ -37,132 +42,244 @@ class ScanService
             ];
         }
 
-        if (! $staff->isActive()) {
-            return [
-                'ok' => false,
-                'error' => 'inactive',
-                'message' => 'Access denied',
-            ];
-        }
+        $now = $occurredAt
+            ? Carbon::parse($occurredAt->toIso8601String())->setTimezone(config('app.timezone'))
+            : now();
 
-        if ($this->isOnApprovedLeave($staff)) {
-            return [
-                'ok' => false,
-                'error' => 'on_leave',
-                'message' => 'Staff is currently on approved leave. Clock-in is blocked.',
-            ];
-        }
+        return DB::transaction(function () use ($staff, $now, $code) {
+            // Serialize all state transitions for an individual member of
+            // staff. The database's one-open-session constraint remains the
+            // final line of defence if another writer bypasses this service.
+            $staff = Staff::query()
+                ->whereKey($staff->id)
+                ->lockForUpdate()
+                ->firstOrFail();
 
-        if (! $this->subscription->isSubscriptionActive()) {
-            $remaining = $this->subscription->getScanCapRemaining($staff->id);
+            if (! hash_equals($staff->staff_id, $code)) {
+                return [
+                    'ok' => false,
+                    'error' => 'not_found',
+                    'message' => 'Staff not found',
+                ];
+            }
 
-            if ($remaining <= 0) {
+            $openSession = Attendance::query()
+                ->where('staff_id', $staff->id)
+                ->where('open_session', true)
+                ->lockForUpdate()
+                ->first();
+
+            if ($openSession) {
+                return $this->clockOut($staff, $openSession, $now);
+            }
+
+            $workDate = $this->resolveWorkDate($staff, $now);
+
+            // A signed offline event is evaluated at the instant it occurred,
+            // rather than against today's status. A person terminated since a
+            // valid past scan may still have that evidence replayed; a fresh
+            // scan today remains blocked because today is not an Active
+            // employment interval.
+            if (! $this->isWithinEmploymentDates($staff, $workDate)) {
+                return [
+                    'ok' => false,
+                    'error' => 'inactive',
+                    'message' => 'Access denied',
+                ];
+            }
+
+            $lastClockOut = Attendance::query()
+                ->where('staff_id', $staff->id)
+                ->whereNotNull('clock_out')
+                ->max('clock_out');
+
+            if ($lastClockOut) {
+                $lastClockOut = Carbon::parse($lastClockOut);
+                $elapsedSinceClockOut = (int) $lastClockOut->diffInSeconds($now);
+                $debounce = max(0, $this->config->scanDebounceSeconds());
+
+                if ($now->greaterThanOrEqualTo($lastClockOut)
+                    && $debounce > 0
+                    && $elapsedSinceClockOut < $debounce) {
+                    return [
+                        'ok' => false,
+                        'error' => 'debounce',
+                        'message' => 'This scan was ignored because it occurred too soon after the previous scan.',
+                    ];
+                }
+            }
+
+            $hasLaterTransition = Attendance::query()
+                ->where('staff_id', $staff->id)
+                ->where(function ($query) use ($now): void {
+                    $query->where('clock_in', '>=', $now)
+                        ->orWhere('clock_out', '>=', $now);
+                })
+                ->exists();
+
+            if ($hasLaterTransition) {
+                return [
+                    'ok' => false,
+                    'error' => 'out_of_order',
+                    'message' => 'This scan occurred before an attendance event that is already recorded. It requires manual review.',
+                ];
+            }
+
+            if ($this->isOnApprovedLeave($staff, $workDate)) {
+                return [
+                    'ok' => false,
+                    'error' => 'on_leave',
+                    'message' => 'Staff is currently on approved leave. Clock-in is blocked.',
+                ];
+            }
+
+            $shift = $this->schedules->effectiveShift($staff, $workDate);
+
+            if ($shift['is_day_off']) {
+                return [
+                    'ok' => false,
+                    'error' => 'day_off',
+                    'message' => 'Today is a scheduled day off. An authorized manager must add any exceptional attendance.',
+                ];
+            }
+
+            if (PublicHoliday::occursOn($workDate) && ! $shift['works_on_public_holiday']) {
+                return [
+                    'ok' => false,
+                    'error' => 'public_holiday',
+                    'message' => 'Staff is not scheduled to work on this public holiday.',
+                ];
+            }
+
+            if (! $this->subscription->consumeClockInAllowance($staff->id, $now)) {
                 return [
                     'ok' => false,
                     'error' => 'scan_cap_reached',
                     'message' => 'Daily scan limit reached. Upgrade to continue scanning.',
                 ];
             }
-        }
 
-        $today = Carbon::today();
-        $now = now();
-
-        return DB::transaction(function () use ($staff, $today, $now) {
-            $todayRecords = Attendance::query()
+            $sessionNumber = ((int) Attendance::query()
                 ->where('staff_id', $staff->id)
-                ->whereDate('date', $today)
-                ->lockForUpdate()
-                ->get();
+                ->whereDate('date', $workDate)
+                ->max('session_number')) + 1;
 
-            $count = $todayRecords->count();
-
-            if ($count === 0) {
-                if ($this->isOnApprovedLeave($staff)) {
+            try {
+                $row = new Attendance([
+                    'staff_id' => $staff->id,
+                    'date' => $workDate,
+                    'session_number' => $sessionNumber,
+                    'clock_in' => $now,
+                    'break_minutes' => (int) $shift['break_minutes'],
+                ]);
+                $this->rules->applyClockInRules($row, $staff);
+                $row->save();
+            } catch (QueryException $exception) {
+                if ($this->isUniqueConstraintViolation($exception)) {
                     return [
                         'ok' => false,
-                        'error' => 'on_leave',
-                        'message' => 'Staff is currently on approved leave. Clock-in is blocked.',
+                        'error' => 'scan_conflict',
+                        'message' => 'Another scan was recorded at the same time. Refresh before trying again.',
                     ];
                 }
 
-                try {
-                    $row = new Attendance([
-                        'staff_id' => $staff->id,
-                        'date' => $today,
-                        'clock_in' => $now,
-                    ]);
-                    $this->rules->applyClockInRules($row, $staff);
-
-                    $isDayOff = $this->schedules->effectiveShift($staff, $today)['is_day_off'] ?? false;
-                    if ($isDayOff) {
-                        $row->is_late = false;
-                        $row->late_minutes = 0;
-                    }
-
-                    $row->save();
-                    $this->subscription->recordScan($staff->id);
-
-                    return $this->successPayload($staff, 'in', $now, $row);
-                } catch (\Illuminate\Database\QueryException $e) {
-                    if (str_contains($e->getMessage(), 'SQLSTATE[23000]') || str_contains($e->getMessage(), 'Duplicate')) {
-                        $row = Attendance::query()
-                            ->where('staff_id', $staff->id)
-                            ->whereDate('date', $today)
-                            ->first();
-
-                        if ($row && $row->clock_out) {
-                            return [
-                                'ok' => false,
-                                'error' => 'already_signed_out',
-                                'message' => 'You\'ve already signed out for today. Try again tomorrow.',
-                            ];
-                        }
-
-                        return $this->successPayload($staff, 'in', $row->clock_in, $row);
-                    }
-
-                    throw $e;
-                }
+                throw $exception;
             }
 
-            $lastRecord = $todayRecords->sortByDesc('clock_in')->first();
+            return $this->successPayload($staff, 'in', $now, $row);
+        }, 3);
+    }
 
-            if ($count >= 2) {
+    /**
+     * @return array<string, mixed>
+     */
+    private function clockOut(Staff $staff, Attendance $session, Carbon $occurredAt): array
+    {
+        if (! $session->clock_in || $occurredAt->lessThan($session->clock_in)) {
+            return [
+                'ok' => false,
+                'error' => 'out_of_order',
+                'message' => 'Clock-out must occur after clock-in. This scan requires manual review.',
+            ];
+        }
+
+        $elapsedSeconds = (int) $session->clock_in->diffInSeconds($occurredAt);
+
+        if ($session->clock_in->diffInHours($occurredAt) > self::MAX_SESSION_HOURS) {
+            return [
+                'ok' => false,
+                'error' => 'stale_open_session',
+                'message' => 'This session has been open for more than 72 hours and requires an authorized manual correction.',
+            ];
+        }
+
+        $debounce = max(0, $this->config->scanDebounceSeconds());
+
+        if ($debounce > 0 && $elapsedSeconds < $debounce) {
+            return [
+                'ok' => false,
+                'error' => 'debounce',
+                'message' => 'This scan was ignored because it occurred too soon after the previous scan.',
+            ];
+        }
+
+        if ($occurredAt->equalTo($session->clock_in)) {
+            return [
+                'ok' => false,
+                'error' => 'out_of_order',
+                'message' => 'Clock-out must occur after clock-in. This scan requires manual review.',
+            ];
+        }
+
+        $laterTransitionExists = Attendance::query()
+            ->where('staff_id', $staff->id)
+            ->whereKeyNot($session->id)
+            ->where(function ($query) use ($occurredAt): void {
+                $query->where('clock_in', '>=', $occurredAt)
+                    ->orWhere('clock_out', '>=', $occurredAt);
+            })
+            ->exists();
+
+        if ($laterTransitionExists) {
+            return [
+                'ok' => false,
+                'error' => 'out_of_order',
+                'message' => 'This clock-out precedes a newer attendance event and requires manual review.',
+            ];
+        }
+
+        $cooldown = max(0, $this->config->scanCooldownSeconds());
+
+        if ($cooldown > 0 && $elapsedSeconds < $cooldown) {
+            $minutesRemaining = (int) ceil(($cooldown - $elapsedSeconds) / 60);
+
+            return [
+                'ok' => false,
+                'error' => 'cooldown',
+                'message' => "Clock-out is locked for {$minutesRemaining} more minute(s) after clock-in. Please wait before clocking out.",
+            ];
+        }
+
+        $session->clock_out = $occurredAt;
+        $this->rules->applyClockOutRules($session, $staff);
+
+        try {
+            $session->save();
+        } catch (QueryException $exception) {
+            if ($this->isUniqueConstraintViolation($exception)) {
                 return [
                     'ok' => false,
-                    'error' => 'already_signed_out',
-                    'message' => 'You\'ve already signed out for today. Try again tomorrow.',
+                    'error' => 'scan_conflict',
+                    'message' => 'Another scan changed this attendance session. Refresh before trying again.',
                 ];
             }
 
-            if ($lastRecord->clock_out !== null) {
-                return [
-                    'ok' => false,
-                    'error' => 'already_signed_out',
-                    'message' => 'You\'ve already signed out for today. Try again tomorrow.',
-                ];
-            }
+            throw $exception;
+        }
 
-            $cooldown = max(0, $this->config->scanCooldownSeconds());
+        $this->subscription->recordScan($staff->id, $occurredAt);
 
-            if ($cooldown > 0 && $lastRecord->clock_in && $now->diffInSeconds($lastRecord->clock_in) < $cooldown) {
-                $minutesRemaining = (int) ceil(($cooldown - $now->diffInSeconds($lastRecord->clock_in)) / 60);
-
-                return [
-                    'ok' => false,
-                    'error' => 'cooldown',
-                    'message' => "Clock-out is locked for {$minutesRemaining} more minute(s) after clock-in. Please wait before clocking out.",
-                ];
-            }
-
-            $lastRecord->clock_out = $now;
-            $this->rules->applyClockOutRules($lastRecord, $staff);
-$lastRecord->save();
-                $this->subscription->recordScan($staff->id);
-
-                return $this->successPayload($staff, 'out', $lastRecord->clock_out, $lastRecord);
-        });
+        return $this->successPayload($staff, 'out', $session->clock_out, $session);
     }
 
     /**
@@ -190,15 +307,66 @@ $lastRecord->save();
         ];
     }
 
-    private function isOnApprovedLeave(Staff $staff): bool
+    private function isOnApprovedLeave(Staff $staff, CarbonInterface $date): bool
     {
-        $today = Carbon::today();
-
         return Leave::query()
             ->where('staff_id', $staff->id)
-            ->where('start_date', '<=', $today)
-            ->where('end_date', '>=', $today)
+            ->whereDate('start_date', '<=', $date->toDateString())
+            ->whereDate('end_date', '>=', $date->toDateString())
             ->where('status', 'Approved')
             ->exists();
+    }
+
+    private function isUniqueConstraintViolation(QueryException $exception): bool
+    {
+        return in_array((string) $exception->getCode(), ['23000', '23505'], true)
+            || str_contains(strtolower($exception->getMessage()), 'unique')
+            || str_contains(strtolower($exception->getMessage()), 'duplicate');
+    }
+
+    private function isWithinEmploymentDates(Staff $staff, CarbonInterface $date): bool
+    {
+        if ($staff->employmentHistory()->exists()) {
+            return StaffEmploymentHistory::query()
+                ->where('staff_id', $staff->id)
+                ->where('status', 'Active')
+                ->whereDate('effective_from', '<=', $date->toDateString())
+                ->where(function ($query) use ($date): void {
+                    $query->whereNull('effective_to')
+                        ->orWhereDate('effective_to', '>=', $date->toDateString());
+                })
+                ->exists();
+        }
+
+        return $staff->isActive()
+            && (! $staff->employment_start_date || $date->toDateString() >= $staff->employment_start_date->toDateString())
+            && (! $staff->employment_end_date || $date->toDateString() <= $staff->employment_end_date->toDateString());
+    }
+
+    private function resolveWorkDate(Staff $staff, Carbon $occurredAt): Carbon
+    {
+        $calendarDate = $occurredAt->copy()->startOfDay();
+        $previousDate = $calendarDate->copy()->subDay();
+        $previousShift = $this->schedules->effectiveShift($staff, $previousDate);
+
+        if ($previousShift['is_day_off']
+            || ! $previousShift['is_overnight']
+            || ! $previousShift['shift_start']
+            || ! $previousShift['shift_end']) {
+            return $calendarDate;
+        }
+
+        $previousStart = Carbon::parse(
+            $previousDate->toDateString().' '.$previousShift['shift_start'],
+            $occurredAt->timezone
+        );
+        $previousEnd = Carbon::parse(
+            $previousDate->toDateString().' '.$previousShift['shift_end'],
+            $occurredAt->timezone
+        )->addDay();
+
+        return $occurredAt->betweenIncluded($previousStart, $previousEnd)
+            ? $previousDate
+            : $calendarDate;
     }
 }

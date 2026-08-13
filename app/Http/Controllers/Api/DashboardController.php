@@ -9,6 +9,8 @@ use Carbon\Carbon;
 
 class DashboardController extends Controller
 {
+    public function __construct(private readonly AlertService $alerts) {}
+
     public function today()
     {
         $today = Carbon::today();
@@ -35,15 +37,15 @@ class DashboardController extends Controller
             ->limit(12)
             ->get();
 
-        $alerts = (new AlertService)->missedClockOuts();
-
         return response()->json([
             'date' => $today->toDateString(),
             'open_sessions' => $open,
             'completed_sessions' => $completed,
             'late_clock_ins' => $late,
             'recent' => $recent,
-            'alerts' => $alerts,
+            'alerts' => $this->alerts->missedClockOuts(),
+            'absence_alerts' => $this->alerts->absentToday(),
+            'late_clock_in_alerts' => $this->alerts->lateClockInsToday(),
         ]);
     }
 
@@ -64,7 +66,7 @@ class DashboardController extends Controller
                         'full_name' => $a->staff?->full_name,
                         'staff_code' => $a->staff?->staff_id,
                         'department' => $a->staff?->department,
-                        'clock_in' => $a->clock_in?->format('H:i'),
+                        'clock_in' => $a->clock_in?->format('g:i A'),
                         'clock_out' => null,
                         'total_hours' => null,
                     ]);
@@ -82,8 +84,8 @@ class DashboardController extends Controller
                         'full_name' => $a->staff?->full_name,
                         'staff_code' => $a->staff?->staff_id,
                         'department' => $a->staff?->department,
-                        'clock_in' => $a->clock_in?->format('H:i'),
-                        'clock_out' => $a->clock_out?->format('H:i'),
+                        'clock_in' => $a->clock_in?->format('g:i A'),
+                        'clock_out' => $a->clock_out?->format('g:i A'),
                         'total_hours' => $a->total_hours,
                     ]);
                 break;
@@ -100,8 +102,8 @@ class DashboardController extends Controller
                         'full_name' => $a->staff?->full_name,
                         'staff_code' => $a->staff?->staff_id,
                         'department' => $a->staff?->department,
-                        'clock_in' => $a->clock_in?->format('H:i'),
-                        'clock_out' => $a->clock_out?->format('H:i'),
+                        'clock_in' => $a->clock_in?->format('g:i A'),
+                        'clock_out' => $a->clock_out?->format('g:i A'),
                         'total_hours' => $a->total_hours,
                     ]);
                 break;

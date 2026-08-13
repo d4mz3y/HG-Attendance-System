@@ -2,10 +2,15 @@ import React, { useEffect, useState } from 'react';
 import api from '../api';
 import { usePaginatedTable } from '../hooks/usePaginatedTable';
 import Paginator from '../components/Paginator';
+import StaffPicker from '../components/StaffPicker';
+import DateTimePicker from '../components/DateTimePicker';
 import { useToast } from '../components/Toast';
+import { useAuth } from '../AuthContext';
+import { localDateISO } from '../localDate';
+import { formatTime } from '../timeFormat';
 
 function todayISO() {
-    return new Date().toISOString().slice(0, 10);
+    return localDateISO();
 }
 
 function toDatetimeLocal(iso) {
@@ -24,14 +29,15 @@ export default function Attendance() {
     const [editing, setEditing] = useState(null);
     const [editForm, setEditForm] = useState({ clock_in: '', clock_out: '', notes: '' });
     const [saving, setSaving] = useState(false);
-    const [role, setRole] = useState('admin');
     const [showManual, setShowManual] = useState(false);
-    const [manualForm, setManualForm] = useState({ staff_id: '', date: todayISO(), clock_in: '', clock_out: '', notes: '', break_minutes: 0 });
+    const [manualForm, setManualForm] = useState({ staff_id: '', date: todayISO(), clock_in: '', clock_out: '', notes: '', break_minutes: '' });
     const [manualSaving, setManualSaving] = useState(false);
     const { addToast } = useToast();
+    const { can } = useAuth();
+    const canManage = can('attendance.manage');
 
     const { rows, meta, filters, loading, load, updateFilter } = usePaginatedTable('/attendances', {
-        date_from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
+        date_from: localDateISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
         date_to: todayISO(),
         department: '',
         staff_pk: '',
@@ -41,7 +47,6 @@ export default function Attendance() {
     useEffect(() => {
         api.get('/lookups/departments').then((r) => setDepartments(r.data));
         api.get('/lookups/staff').then((r) => setStaffOpts(r.data));
-        api.get('/user').then((r) => setRole(r.data.user?.role ?? 'admin'));
     }, []);
 
     const openEdit = (row) => {
@@ -81,6 +86,11 @@ export default function Attendance() {
 
     const saveManual = async (e) => {
         e.preventDefault();
+        if (!manualForm.staff_id) {
+            addToast('Choose a staff member before saving attendance.', 'error');
+
+            return;
+        }
         setManualSaving(true);
         try {
             await api.post('/attendances/manual', {
@@ -89,10 +99,10 @@ export default function Attendance() {
                 clock_in: manualForm.clock_in || null,
                 clock_out: manualForm.clock_out || null,
                 notes: manualForm.notes || null,
-                break_minutes: manualForm.break_minutes,
+                break_minutes: manualForm.break_minutes === '' ? null : Number(manualForm.break_minutes),
             });
             setShowManual(false);
-            setManualForm({ staff_id: '', date: todayISO(), clock_in: '', clock_out: '', notes: '', break_minutes: 0 });
+            setManualForm({ staff_id: '', date: todayISO(), clock_in: '', clock_out: '', notes: '', break_minutes: '' });
             load(meta.current_page);
             addToast('Attendance record created', 'success');
         } catch (err) {
@@ -110,7 +120,7 @@ export default function Attendance() {
                 <p className="text-sm text-slate-500">Filter records or edit clock-in / clock-out times.</p>
             </div>
 
-            {role === 'super_admin' && (
+            {canManage && (
                 <div className="flex justify-end">
                     <button type="button" onClick={() => setShowManual(true)} className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700">Mark attendance manually</button>
                 </div>
@@ -155,19 +165,14 @@ export default function Attendance() {
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
                     Staff
-                    <select
+                    <StaffPicker
                         name="staff_pk"
-                        className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm"
+                        className="mt-1"
+                        options={staffOpts}
                         value={filters.staff_pk}
-                        onChange={(e) => updateFilter('staff_pk', e.target.value)}
-                    >
-                        <option value="">Any</option>
-                        {staffOpts.map((s) => (
-                            <option key={s.id} value={s.id}>
-                                {s.full_name} ({s.staff_id})
-                            </option>
-                        ))}
-                    </select>
+                        onChange={(value) => updateFilter('staff_pk', value)}
+                        emptyLabel="Any staff"
+                    />
                 </label>
                 <label className="text-xs font-semibold text-slate-600">
                     Status
@@ -181,7 +186,6 @@ export default function Attendance() {
                         <option value="late">Late</option>
                         <option value="on_time">On time</option>
                         <option value="overtime">Overtime</option>
-                        <option value="absent">Absent</option>
                         <option value="incomplete">Incomplete</option>
                     </select>
                 </label>
@@ -221,26 +225,22 @@ export default function Attendance() {
                                 </td>
                                 <td className="px-3 py-2">{a.staff?.department}</td>
                                 <td className="px-3 py-2 whitespace-nowrap">
-                                    {a.clock_in
-                                        ? new Date(a.clock_in).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                        : ''}
+                                    {formatTime(a.clock_in, '')}
                                 </td>
                                 <td className="px-3 py-2 whitespace-nowrap">
-                                    {a.clock_out
-                                        ? new Date(a.clock_out).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                                        : '—'}
+                                    {formatTime(a.clock_out)}
                                 </td>
                                 <td className="px-3 py-2">{a.total_hours ?? '—'}</td>
                                 <td className="px-3 py-2">{a.is_late ? `${a.late_minutes}m` : '—'}</td>
                                 <td className="px-3 py-2">{a.overtime_minutes ? `${a.overtime_minutes}m` : '—'}</td>
                                 <td className="px-3 py-2 text-right">
-                                    <button
+                                    {canManage && <button
                                         type="button"
                                         onClick={() => openEdit(a)}
                                         className="text-xs font-semibold text-sky-700 underline"
                                     >
                                         Edit
-                                    </button>
+                                    </button>}
                                 </td>
                             </tr>
                         ))}
@@ -250,7 +250,7 @@ export default function Attendance() {
 
             <Paginator meta={meta} onPage={load} />
 
-            {editing && (
+            {canManage && editing && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                     <form
                         onSubmit={saveEdit}
@@ -263,27 +263,12 @@ export default function Attendance() {
 
                         <label className="mt-4 block text-sm font-medium text-slate-700">
                             Clock in
-                            <input
-                                id="clock_in"
-                                name="clock_in"
-                                type="datetime-local"
-                                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-                                value={editForm.clock_in}
-                                onChange={(e) => setEditForm((f) => ({ ...f, clock_in: e.target.value }))}
-                                required
-                            />
+                            <DateTimePicker id="clock_in" name="clock_in" className="mt-1" value={editForm.clock_in} onChange={(e) => setEditForm((f) => ({ ...f, clock_in: e.target.value }))} required ariaLabel="Clock in" />
                         </label>
 
                         <label className="mt-4 block text-sm font-medium text-slate-700">
                             Clock out
-                            <input
-                                id="clock_out"
-                                name="clock_out"
-                                type="datetime-local"
-                                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2"
-                                value={editForm.clock_out}
-                                onChange={(e) => setEditForm((f) => ({ ...f, clock_out: e.target.value }))}
-                            />
+                            <DateTimePicker id="clock_out" name="clock_out" className="mt-1" value={editForm.clock_out} onChange={(e) => setEditForm((f) => ({ ...f, clock_out: e.target.value }))} ariaLabel="Clock out" />
                         </label>
 
                         <label className="mt-4 block text-sm font-medium text-slate-700">
@@ -322,7 +307,7 @@ export default function Attendance() {
                     </form>
                 </div>
             )}
-            {showManual && (
+            {canManage && showManual && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                     <form onSubmit={saveManual} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
                         <h2 className="text-lg font-bold text-slate-900">Mark attendance manually</h2>
@@ -330,10 +315,15 @@ export default function Attendance() {
 
                         <label className="mt-4 block text-sm font-medium text-slate-700">
                             Staff
-                            <select name="staff_id" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={manualForm.staff_id} onChange={(e) => setManualForm((f) => ({ ...f, staff_id: e.target.value }))} required>
-                                <option value="">Choose staff</option>
-                                {staffOpts.map((s) => <option key={s.id} value={s.id}>{s.full_name} ({s.staff_id})</option>)}
-                            </select>
+                            <StaffPicker
+                                name="staff_id"
+                                className="mt-1"
+                                options={staffOpts}
+                                value={manualForm.staff_id}
+                                onChange={(value) => setManualForm((form) => ({ ...form, staff_id: value }))}
+                                emptyLabel="Choose staff"
+                                required
+                            />
                         </label>
 
                         <label className="mt-4 block text-sm font-medium text-slate-700">
@@ -343,17 +333,17 @@ export default function Attendance() {
 
                         <label className="mt-4 block text-sm font-medium text-slate-700">
                             Clock in
-                            <input type="datetime-local" name="clock_in" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={manualForm.clock_in} onChange={(e) => setManualForm((f) => ({ ...f, clock_in: e.target.value }))} />
+                            <DateTimePicker name="clock_in" className="mt-1" value={manualForm.clock_in} onChange={(e) => setManualForm((f) => ({ ...f, clock_in: e.target.value }))} ariaLabel="Clock in" />
                         </label>
 
                         <label className="mt-4 block text-sm font-medium text-slate-700">
                             Clock out
-                            <input type="datetime-local" name="clock_out" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={manualForm.clock_out} onChange={(e) => setManualForm((f) => ({ ...f, clock_out: e.target.value }))} />
+                            <DateTimePicker name="clock_out" className="mt-1" value={manualForm.clock_out} onChange={(e) => setManualForm((f) => ({ ...f, clock_out: e.target.value }))} ariaLabel="Clock out" />
                         </label>
 
                         <label className="mt-4 block text-sm font-medium text-slate-700">
                             Break (minutes)
-                            <input type="number" name="break_minutes" min={0} max={480} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={manualForm.break_minutes} onChange={(e) => setManualForm((f) => ({ ...f, break_minutes: Number(e.target.value) }))} />
+                            <input type="number" name="break_minutes" min={0} max={480} placeholder="Use scheduled/default break" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={manualForm.break_minutes} onChange={(e) => setManualForm((f) => ({ ...f, break_minutes: e.target.value }))} />
                         </label>
 
                         <label className="mt-4 block text-sm font-medium text-slate-700">

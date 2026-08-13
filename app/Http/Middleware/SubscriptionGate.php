@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\SubscriptionService;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -10,7 +11,7 @@ class SubscriptionGate
 {
     public function handle(Request $request, Closure $next): Response
     {
-        $subscription = app(\App\Services\SubscriptionService::class);
+        $subscription = app(SubscriptionService::class);
 
         if (! $subscription->isSubscriptionActive()) {
             return response()->json([

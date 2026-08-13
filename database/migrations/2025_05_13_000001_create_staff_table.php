@@ -14,7 +14,7 @@ return new class extends Migration
             $table->string('full_name');
             $table->string('department');
             $table->string('job_title')->nullable();
-            $table->string('branch')->default('HQ');
+            $table->string('branch')->default('Lagos (HQ)');
             $table->string('photo_path')->nullable();
             $table->enum('employment_status', ['Active', 'Inactive'])->default('Active');
             $table->timestamps();

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Auth\Permission;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
@@ -14,6 +15,10 @@ class User extends Authenticatable
         'username',
         'password',
         'role',
+        'is_active',
+        'must_change_password',
+        'password_changed_at',
+        'last_login_at',
     ];
 
     protected $hidden = [
@@ -25,7 +30,22 @@ class User extends Authenticatable
     {
         return [
             'password' => 'hashed',
+            'is_active' => 'boolean',
+            'must_change_password' => 'boolean',
+            'password_changed_at' => 'datetime',
+            'last_login_at' => 'datetime',
         ];
+    }
+
+    /** @return list<string> */
+    public function permissions(): array
+    {
+        return Permission::forRole($this->role);
+    }
+
+    public function hasPermission(string $permission): bool
+    {
+        return Permission::roleHas($this->role, $permission);
     }
 
     public function isSuperAdmin(): bool
@@ -33,8 +53,38 @@ class User extends Authenticatable
         return $this->role === 'super_admin';
     }
 
+    public function canChangeOwnPassword(): bool
+    {
+        return $this->hasPermission(Permission::PASSWORD_CHANGE_SELF);
+    }
+
     public function isAdmin(): bool
     {
-        return in_array($this->role, ['admin', 'super_admin'], true);
+        return $this->hasPermission(Permission::DASHBOARD_VIEW);
+    }
+
+    public function canManageStaff(): bool
+    {
+        return $this->hasPermission(Permission::STAFF_MANAGE);
+    }
+
+    public function canManageAttendance(): bool
+    {
+        return $this->hasPermission(Permission::ATTENDANCE_MANAGE);
+    }
+
+    public function canManageLeave(): bool
+    {
+        return $this->hasPermission(Permission::LEAVE_MANAGE);
+    }
+
+    public function canManageSchedules(): bool
+    {
+        return $this->hasPermission(Permission::SCHEDULE_MANAGE);
+    }
+
+    public function canManageSystem(): bool
+    {
+        return $this->hasPermission(Permission::SETTINGS_MANAGE);
     }
 }

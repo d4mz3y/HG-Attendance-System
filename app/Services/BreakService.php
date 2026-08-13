@@ -3,12 +3,11 @@
 namespace App\Services;
 
 use App\Models\Attendance;
-use App\Models\AttendanceAudit;
-use App\Models\Staff;
-use Carbon\Carbon;
 
 class BreakService
 {
+    public function __construct(protected ScheduleService $schedules) {}
+
     public function applyBreak(Attendance $row, int $breakMinutes): void
     {
         $row->break_minutes = max(0, $breakMinutes);
@@ -29,7 +28,7 @@ class BreakService
 
     public function breakMinutesForAttendance(Attendance $attendance): int
     {
-        $schedule = (new ScheduleService)->effectiveShift($attendance->staff, $attendance->date);
+        $schedule = $this->schedules->effectiveShift($attendance->staff, $attendance->date);
 
         return (int) ($attendance->break_minutes ?? $schedule['break_minutes'] ?? 60);
     }

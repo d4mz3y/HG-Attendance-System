@@ -14,6 +14,9 @@ class Leave extends Model
         'type',
         'reason',
         'status',
+        'created_by',
+        'approved_at',
+        'approved_by',
     ];
 
     protected function casts(): array
@@ -25,11 +28,6 @@ class Leave extends Model
         ];
     }
 
-    protected function serializeDate(\DateTimeInterface $date): string
-    {
-        return $date->format('Y-m-d');
-    }
-
     public function staff(): BelongsTo
     {
         return $this->belongsTo(Staff::class, 'staff_id');
@@ -38,5 +36,19 @@ class Leave extends Model
     public function creator(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function approver(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'approved_by');
+    }
+
+    public function toArray(): array
+    {
+        $array = parent::toArray();
+        $array['start_date'] = $this->start_date?->format('Y-m-d');
+        $array['end_date'] = $this->end_date?->format('Y-m-d');
+
+        return $array;
     }
 }

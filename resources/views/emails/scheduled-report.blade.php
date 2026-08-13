@@ -7,10 +7,7 @@
 <body style="font-family: Arial, sans-serif; color: #111;">
     <h1>Hogan Guards Attendance Report</h1>
     <p>
-        From {{ $filters['date_from'] }} to {{ $filters['date_to'] }}
-        @if($filters['department'])
-            · Department: {{ $filters['department'] }}
-        @endif
+        Your {{ $frequency }} report covers {{ $from }} through {{ $to }}.
     </p>
     <p>Please find the attached Excel report.</p>
     <p style="color: #666; font-size: 12px;">This is an automated message from Hogan Guards Attendance HQ.</p>

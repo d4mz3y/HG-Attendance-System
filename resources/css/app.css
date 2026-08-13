@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --color-hg-navy: #113C63;
@@ -24,6 +25,186 @@
 
 .animate-fade-out {
   animation: fadeOut 150ms ease-in forwards;
+}
+
+@layer base {
+  html {
+    background-color: #f8fafc;
+  }
+
+  html.dark {
+    background-color: #0f172a;
+  }
+
+  html.dark body {
+    background-color: #0f172a;
+    color: #e2e8f0;
+  }
+}
+
+/*
+ * The administration screens share utility colours. These overrides live in
+ * the utilities layer so they intentionally win over the light utility
+ * classes used by older screens, while remaining scoped to the app content.
+ */
+@layer utilities {
+  html.dark main .bg-white {
+    background-color: #172033;
+  }
+
+  html.dark main .bg-slate-50 {
+    background-color: #111c2e;
+  }
+
+  html.dark main .bg-slate-50\/50 {
+    background-color: rgb(17 28 46 / 0.65);
+  }
+
+  html.dark main .bg-slate-100 {
+    background-color: #1d2a3e;
+  }
+
+  html.dark main .bg-slate-200 {
+    background-color: #27384d;
+  }
+
+  html.dark main .text-slate-900,
+  html.dark main .text-slate-800,
+  html.dark main .text-slate-700 {
+    color: #e2e8f0;
+  }
+
+  html.dark main .text-slate-600,
+  html.dark main .text-slate-500,
+  html.dark main .text-slate-400 {
+    color: #a7b5ca;
+  }
+
+  html.dark main .border-slate-200,
+  html.dark main .border-slate-300,
+  html.dark main .border {
+    border-color: #334155;
+  }
+
+  html.dark main .divide-slate-100 > :not(:last-child),
+  html.dark main .divide-slate-200 > :not(:last-child),
+  html.dark main .divide-y > :not(:last-child) {
+    border-color: #334155;
+  }
+
+  html.dark main input[class],
+  html.dark main select[class],
+  html.dark main textarea[class] {
+    background-color: #0b1220;
+    border-color: #475569;
+    color: #e2e8f0;
+  }
+
+  html.dark main input[class]::placeholder,
+  html.dark main textarea[class]::placeholder {
+    color: #718096;
+  }
+
+  html.dark main .hover\:bg-slate-50:hover,
+  html.dark main .hover\:bg-slate-100:hover {
+    background-color: #243047;
+  }
+
+  html.dark main button.bg-slate-900,
+  html.dark main a.bg-slate-900 {
+    background-color: #1b4b73;
+  }
+
+  html.dark main button.hover\:bg-slate-800:hover,
+  html.dark main a.hover\:bg-slate-800:hover {
+    background-color: #28618f;
+  }
+
+  html.dark main .bg-red-50 {
+    background-color: #451a1a;
+  }
+
+  html.dark main .bg-amber-50,
+  html.dark main .bg-amber-100 {
+    background-color: #422006;
+  }
+
+  html.dark main .bg-emerald-50 {
+    background-color: #052e21;
+  }
+
+  html.dark main .border-red-200 {
+    border-color: #7f1d1d;
+  }
+
+  html.dark main .text-red-600,
+  html.dark main .text-red-700,
+  html.dark main .text-red-800 {
+    color: #fca5a5;
+  }
+
+  html.dark main .text-amber-800 {
+    color: #fcd34d;
+  }
+
+  html.dark main .text-emerald-700,
+  html.dark main .text-emerald-800 {
+    color: #6ee7b7;
+  }
+
+  html.dark main .text-sky-700 {
+    color: #7dd3fc;
+  }
+}
+
+.hg-global-loading {
+  position: fixed;
+  z-index: 70;
+  top: 50%;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  transform: translate(-50%, -50%);
+  border: 1px solid rgb(148 163 184 / 0.38);
+  border-radius: 9999px;
+  background: rgb(255 255 255 / 0.96);
+  padding: 0.55rem 0.8rem;
+  color: #334155;
+  box-shadow: 0 12px 28px rgb(15 23 42 / 0.18);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.015em;
+  pointer-events: none;
+}
+
+.dark .hg-global-loading {
+  border-color: rgb(100 116 139 / 0.65);
+  background: rgb(15 23 42 / 0.96);
+  color: #e2e8f0;
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.4);
+}
+
+.hg-global-loading__spinner {
+  width: 0.85rem;
+  height: 0.85rem;
+  border: 2px solid #cbd5e1;
+  border-right-color: #113c63;
+  border-radius: 9999px;
+  animation: hg-loading-spin 650ms linear infinite;
+}
+
+.dark .hg-global-loading__spinner {
+  border-color: #475569;
+  border-right-color: #93c5fd;
+}
+
+@keyframes hg-loading-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hg-global-loading__spinner { animation-duration: 1.6s; }
 }
 
 @keyframes fadeIn {

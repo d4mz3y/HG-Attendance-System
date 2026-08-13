@@ -1,50 +1,36 @@
 #!/bin/sh
-set -e
+set -eu
 
 cd /var/www/html
 
-# Keep .env aligned with docker-compose DB/cache (host .env often has 127.0.0.1).
-set_env() {
-    key="$1"
-    value="$2"
-    if grep -q "^${key}=" .env 2>/dev/null; then
-        sed -i "s|^${key}=.*|${key}=${value}|" .env
-    else
-        printf '%s=%s\n' "$key" "$value" >> .env
+mkdir -p storage/app/private storage/app/public storage/framework/cache storage/framework/sessions storage/framework/views storage/logs
+
+require_value() {
+    variable_name=$1
+    eval "variable_value=\${$variable_name:-}"
+
+    if [ -z "$variable_value" ]; then
+        echo "$variable_name must be set in .env.docker; refusing to continue." >&2
+        exit 1
     fi
 }
 
-if [ ! -f .env ]; then
-    cp .env.example .env
+require_value APP_KEY
+require_value APP_URL
+require_value DB_DATABASE
+require_value DB_USERNAME
+require_value DB_PASSWORD
+
+case "$APP_KEY" in
+    base64:*) ;;
+    *) echo "APP_KEY must be a generated Laravel base64 key; refusing to continue." >&2; exit 1 ;;
+esac
+
+if [ "$#" -gt 0 ]; then
+    exec "$@"
 fi
 
-set_env DB_HOST "${DB_HOST:-mysql}"
-set_env DB_PORT "${DB_PORT:-3306}"
-set_env DB_DATABASE "${DB_DATABASE:-hg_attendance}"
-set_env DB_USERNAME "${DB_USERNAME:-root}"
-set_env DB_PASSWORD "${DB_PASSWORD:-root}"
-set_env CACHE_STORE "${CACHE_STORE:-file}"
-set_env SESSION_DRIVER "${SESSION_DRIVER:-file}"
-set_env QUEUE_CONNECTION "${QUEUE_CONNECTION:-sync}"
+php artisan config:clear
+php artisan optimize
 
-if [ ! -d vendor ]; then
-    composer install --no-interaction --prefer-dist --no-progress --no-blocking
-fi
-
-if [ ! -f public/build/manifest.json ]; then
-    npm ci --no-audit --no-fund
-    npm run build
-fi
-
-if ! grep -q '^APP_KEY=base64:' .env 2>/dev/null; then
-    php artisan key:generate --force
-fi
-
-php artisan config:clear 2>/dev/null || true
-php artisan migrate --force --seed
-php artisan storage:link --force || true
-
-# Remove Vite dev marker so production uses public/build (not localhost:5173)
-rm -f public/hot
-
-exec php artisan serve --host=0.0.0.0 --port=8000
+exec /usr/bin/supervisord -c /etc/supervisor/supervisord.conf

@@ -1,6 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import api from '../api';
+import StaffPicker from '../components/StaffPicker';
 import { useToast } from '../components/Toast';
+import { useAuth } from '../AuthContext';
+import { localDateISO } from '../localDate';
 
 function formatDate(value) {
     if (!value) {
@@ -24,11 +27,13 @@ const EMPTY = {
 
 export default function Leaves() {
     const { addToast } = useToast();
+    const { can } = useAuth();
+    const canManage = can('leave.manage');
     const [rows, setRows] = useState([]);
     const [meta, setMeta] = useState({ current_page: 1, last_page: 1 });
     const [filters, setFilters] = useState({
-        date_from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
-        date_to: new Date().toISOString().slice(0, 10),
+        date_from: localDateISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+        date_to: localDateISO(),
         status: '',
         department: '',
     });
@@ -73,8 +78,8 @@ export default function Leaves() {
         setForm({
             ...EMPTY,
             staff_id: '',
-            start_date: new Date().toISOString().slice(0, 10),
-            end_date: new Date().toISOString().slice(0, 10),
+            start_date: localDateISO(),
+            end_date: localDateISO(),
         });
     };
 
@@ -111,6 +116,11 @@ export default function Leaves() {
 
     const submit = async (e) => {
         e.preventDefault();
+        if (!form.staff_id) {
+            addToast('Choose a staff member before saving leave.', 'error');
+
+            return;
+        }
         setSaving(true);
         try {
             const payload = {
@@ -139,9 +149,9 @@ export default function Leaves() {
                     <h1 className="text-2xl font-bold text-slate-900">Leaves</h1>
                     <p className="text-sm text-slate-500">Track approved, pending, and rejected leave.</p>
                 </div>
-                <button type="button" onClick={openNew} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
+                {canManage && <button type="button" onClick={openNew} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
                     Add leave
-                </button>
+                </button>}
             </div>
 
             <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
@@ -209,12 +219,12 @@ export default function Leaves() {
                                     </span>
                                 </td>
                                 <td className="px-3 py-2 text-right">
-                                    <button type="button" onClick={() => openEdit(r)} className="text-xs font-semibold text-sky-700 underline">
+                                    {canManage && <><button type="button" onClick={() => openEdit(r)} className="text-xs font-semibold text-sky-700 underline">
                                         Edit
                                     </button>
                                     <button type="button" onClick={() => deleteLeave(r.id)} disabled={deleting === r.id} className="ml-2 text-xs font-semibold text-red-600 underline disabled:opacity-40">
                                         {deleting === r.id ? 'Deleting…' : 'Delete'}
-                                    </button>
+                                    </button></>}
                                 </td>
                             </tr>
                         ))}
@@ -230,19 +240,22 @@ export default function Leaves() {
                 </div>
             </div>
 
-            {(editing === 'new' || editing) && (
+            {canManage && (editing === 'new' || editing) && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                     <form onSubmit={submit} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
                         <h2 className="text-lg font-bold text-slate-900">{editing === 'new' ? 'Add leave' : 'Edit leave'}</h2>
                         <div className="mt-4 space-y-3">
                             <label className="block text-sm font-medium text-slate-700">
                                 Staff
-                                <select name="staff_id" className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" value={form.staff_id} onChange={(e) => setForm((f) => ({ ...f, staff_id: e.target.value }))} required>
-                                    <option value="">Select staff</option>
-                                    {staffOpts.map((s) => (
-                                        <option key={s.id} value={s.id}>{s.full_name} ({s.staff_id})</option>
-                                    ))}
-                                </select>
+                                <StaffPicker
+                                    name="staff_id"
+                                    className="mt-1"
+                                    options={staffOpts}
+                                    value={form.staff_id}
+                                    onChange={(value) => setForm((form) => ({ ...form, staff_id: value }))}
+                                    emptyLabel="Select staff"
+                                    required
+                                />
                             </label>
                             <label className="block text-sm font-medium text-slate-700">
                                 Start date

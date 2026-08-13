@@ -3,14 +3,18 @@ import api from '../api';
 import { useToast, ConfirmDialog } from '../components/Toast';
 import { usePaginatedTable } from '../hooks/usePaginatedTable';
 import Paginator from '../components/Paginator';
+import StaffPicker from '../components/StaffPicker';
+import { useAuth } from '../AuthContext';
+import { localDateISO } from '../localDate';
 
 function todayISO() {
-    return new Date().toISOString().slice(0, 10);
+    return localDateISO();
 }
 
 function formatDate(date) {
     if (!date) return '';
     if (Array.isArray(date)) return date.join(' - ');
+    if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}/.test(date)) return date.slice(0, 10);
     const d = new Date(date);
     if (isNaN(d.getTime())) return String(date).slice(0, 10);
     const year = d.getFullYear();
@@ -20,6 +24,8 @@ function formatDate(date) {
 }
 
 export default function PublicHolidays() {
+    const currentYear = new Date().getFullYear();
+    const yearOptions = Array.from({ length: 8 }, (_, index) => currentYear - 2 + index);
     const [tab, setTab] = useState('holidays');
     const [holidays, setHolidays] = useState([]);
     const [form, setForm] = useState({ date: '', name: '', description: '', is_recurring: false });
@@ -27,6 +33,8 @@ export default function PublicHolidays() {
     const [saving, setSaving] = useState(false);
     const [year, setYear] = useState(new Date().getFullYear());
     const { addToast } = useToast();
+    const { can } = useAuth();
+    const canManage = can('holiday.manage');
     const [confirmState, setConfirmState] = useState({ open: false, title: '', message: '', onConfirm: () => {} });
 
     const [departments, setDepartments] = useState([]);
@@ -34,7 +42,7 @@ export default function PublicHolidays() {
     const [selectedHoliday, setSelectedHoliday] = useState('');
 
     const { rows, meta, filters, loading, load, updateFilter } = usePaginatedTable('/reports', {
-        date_from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10),
+        date_from: localDateISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
         date_to: todayISO(),
         department: '',
         staff_pk: '',
@@ -59,7 +67,7 @@ export default function PublicHolidays() {
 
     const clearHolidayFilter = () => {
         setSelectedHoliday('');
-        updateFilter('date_from', new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10));
+        updateFilter('date_from', localDateISO(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
         updateFilter('date_to', todayISO());
     };
 
@@ -70,13 +78,13 @@ export default function PublicHolidays() {
 
     const openNew = () => {
         setEditing('new');
-        setForm({ date: new Date().toISOString().slice(0, 10), name: '', description: '', is_recurring: false });
+        setForm({ date: localDateISO(), name: '', description: '', is_recurring: false });
     };
 
     const openEdit = (holiday) => {
         setEditing(holiday.id);
         setForm({
-            date: holiday.date,
+            date: holiday.source_date ?? holiday.date,
             name: holiday.name,
             description: holiday.description ?? '',
             is_recurring: holiday.is_recurring,
@@ -126,9 +134,9 @@ export default function PublicHolidays() {
                 </div>
                 <div className="flex gap-2">
                     <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={year} onChange={(e) => setYear(Number(e.target.value))}>
-                        {[2024, 2025, 2026, 2027, 2028].map((y) => <option key={y} value={y}>{y}</option>)}
+                        {yearOptions.map((y) => <option key={y} value={y}>{y}</option>)}
                     </select>
-                    {tab === 'holidays' && (
+                    {canManage && tab === 'holidays' && (
                         <button type="button" onClick={openNew} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Add holiday</button>
                     )}
                 </div>
@@ -156,13 +164,15 @@ export default function PublicHolidays() {
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {holidays.map((h) => (
-                                <tr key={h.id} className="hover:bg-slate-50">
+                                <tr key={`${h.id}-${formatDate(h.date)}`} className="hover:bg-slate-50">
                                     <td className="px-3 py-2 whitespace-nowrap">{formatDate(h.date)}</td>
                                     <td className="px-3 py-2 font-medium">{h.name}</td>
                                     <td className="px-3 py-2">{h.is_recurring ? 'Yes' : 'No'}</td>
                                     <td className="px-3 py-2 text-right">
-                                        <button type="button" onClick={() => openEdit(h)} className="text-xs font-semibold text-sky-700 underline">Edit</button>
-                                        <button type="button" onClick={() => remove(h.id)} className="ml-3 text-xs font-semibold text-red-600">Remove</button>
+                                        {canManage && (h.historical
+                                            ? <span className="text-xs text-slate-400">Historical</span>
+                                            : <><button type="button" onClick={() => openEdit(h)} className="text-xs font-semibold text-sky-700 underline">Edit</button>
+                                                <button type="button" onClick={() => remove(h.id)} className="ml-3 text-xs font-semibold text-red-600">Remove</button></>)}
                                     </td>
                                 </tr>
                             ))}
@@ -181,7 +191,7 @@ export default function PublicHolidays() {
                             Public Holiday
                             <select className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={selectedHoliday} onChange={(e) => setSelectedHoliday(e.target.value)}>
                                 <option value="">All holidays</option>
-                                {holidays.map((h) => <option key={h.id} value={formatDate(h.date)}>{formatDate(h.date)} - {h.name}</option>)}
+                                {holidays.map((h) => <option key={`${h.id}-${formatDate(h.date)}`} value={formatDate(h.date)}>{formatDate(h.date)} - {h.name}</option>)}
                             </select>
                         </label>
                         <label className="text-xs font-semibold text-slate-600">
@@ -193,10 +203,14 @@ export default function PublicHolidays() {
                         </label>
                         <label className="text-xs font-semibold text-slate-600">
                             Staff
-                            <select name="staff_pk" className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-1 text-sm" value={filters.staff_pk} onChange={(e) => updateFilter('staff_pk', e.target.value)}>
-                                <option value="">Any</option>
-                                {staffOpts.map((s) => <option key={s.id} value={s.id}>{s.full_name} ({s.staff_id})</option>)}
-                            </select>
+                            <StaffPicker
+                                name="staff_pk"
+                                className="mt-1"
+                                options={staffOpts}
+                                value={filters.staff_pk}
+                                onChange={(value) => updateFilter('staff_pk', value)}
+                                emptyLabel="Any staff"
+                            />
                         </label>
                         <div className="flex items-end gap-2">
                             <button type="button" onClick={() => load(1)} className="w-full rounded-lg bg-slate-900 py-2 text-sm font-semibold text-white">Run report</button>
@@ -213,13 +227,17 @@ export default function PublicHolidays() {
                                     <th className="px-3 py-2">Name</th>
                                     <th className="px-3 py-2">Staff ID</th>
                                     <th className="px-3 py-2">Dept</th>
+                                    <th className="px-3 py-2">Holiday</th>
                                     <th className="px-3 py-2">Date</th>
+                                    <th className="px-3 py-2">Session</th>
                                     <th className="px-3 py-2">In</th>
                                     <th className="px-3 py-2">Out</th>
                                     <th className="px-3 py-2">Hours</th>
+                                    <th className="px-3 py-2">Break</th>
                                     <th className="px-3 py-2">Late</th>
                                     <th className="px-3 py-2">OT</th>
                                     <th className="px-3 py-2">Notes</th>
+                                    <th className="px-3 py-2">Status</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
@@ -228,17 +246,21 @@ export default function PublicHolidays() {
                                         <td className="px-3 py-2 font-semibold text-slate-900">{r.full_name}</td>
                                         <td className="px-3 py-2 font-mono text-xs">{r.staff_code}</td>
                                         <td className="px-3 py-2">{r.department}</td>
+                                        <td className="px-3 py-2">{r.holiday_name || '—'}</td>
                                         <td className="px-3 py-2 whitespace-nowrap">{formatDate(r.date)}</td>
+                                        <td className="px-3 py-2">{r.session_number || '—'}</td>
                                         <td className="px-3 py-2">{r.clock_in}</td>
                                         <td className="px-3 py-2">{r.clock_out}</td>
                                         <td className="px-3 py-2">{r.total_hours}</td>
+                                        <td className="px-3 py-2">{r.break_minutes}</td>
                                         <td className="px-3 py-2">{r.late_minutes}</td>
                                         <td className="px-3 py-2">{r.overtime_minutes}</td>
                                         <td className="px-3 py-2">{r.notes}</td>
+                                        <td className="px-3 py-2">{r.status}</td>
                                     </tr>
                                 ))}
                                 {rows.length === 0 && !loading && (
-                                    <tr><td colSpan={10} className="px-3 py-6 text-center text-slate-500">No public holiday work records found.</td></tr>
+                                    <tr><td colSpan={14} className="px-3 py-6 text-center text-slate-500">No actual public holiday attendance records found.</td></tr>
                                 )}
                             </tbody>
                         </table>
@@ -248,7 +270,7 @@ export default function PublicHolidays() {
                 </div>
             )}
 
-            {(editing === 'new' || editing) && (
+            {canManage && (editing === 'new' || editing) && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
                     <form onSubmit={submit} className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-xl">
                         <h2 className="text-lg font-bold text-slate-900">{editing === 'new' ? 'Add holiday' : 'Edit holiday'}</h2>

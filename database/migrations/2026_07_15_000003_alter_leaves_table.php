@@ -2,8 +2,8 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -21,23 +21,18 @@ return new class extends Migration
             }
         });
 
-        $rows = DB::table('leaves')->get();
-        foreach ($rows as $row) {
-            $start = $row->start_date;
-            $end = $row->end_date;
+        $invalidRows = DB::table('leaves')
+            ->whereNull('start_date')
+            ->orWhereNull('end_date')
+            ->orWhere('start_date', '0000-00-00')
+            ->orWhere('end_date', '0000-00-00')
+            ->limit(10)
+            ->pluck('id');
 
-            $badStart = ! $start || $start === '0000-00-00';
-            $badEnd = ! $end || $end === '0000-00-00';
-
-            if ($badStart || $badEnd) {
-                $safeStart = $badStart ? '2026-01-01' : $start;
-                $safeEnd = $badEnd ? $safeStart : $end;
-
-                DB::table('leaves')->where('id', $row->id)->update([
-                    'start_date' => $safeStart,
-                    'end_date' => $safeEnd,
-                ]);
-            }
+        if ($invalidRows->isNotEmpty()) {
+            throw new RuntimeException(
+                'Cannot make leave dates mandatory until invalid records are repaired. Leave IDs: '.$invalidRows->implode(', ')
+            );
         }
 
         Schema::table('leaves', function (Blueprint $table) {

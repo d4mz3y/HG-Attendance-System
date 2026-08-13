@@ -27,7 +27,7 @@ class StaffCodesController extends Controller
             roundBlockSizeMode: RoundBlockSizeMode::Margin,
         );
 
-        $writer = new PngWriter();
+        $writer = new PngWriter;
         $result = $writer->write($qrCode);
 
         return response($result->getString(), 200, [
@@ -38,7 +38,7 @@ class StaffCodesController extends Controller
 
     public function barcode(Staff $staff): Response
     {
-        $generator = new BarcodeGeneratorPNG();
+        $generator = new BarcodeGeneratorPNG;
         $png = $generator->getBarcode(
             $staff->staff_id,
             $generator::TYPE_CODE_128,

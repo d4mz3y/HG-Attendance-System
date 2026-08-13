@@ -6,7 +6,10 @@ return [
         'local' => [
             'driver' => 'local',
             'root' => storage_path('app/private'),
-            'serve' => true,
+            // Private files are exposed only by purpose-built, authorized
+            // endpoints (for example the signed staff-photo route). Do not
+            // register Laravel's generic signed storage download route.
+            'serve' => false,
             'throw' => false,
         ],
         'public' => [

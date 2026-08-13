@@ -3,14 +3,16 @@ import { Link } from 'react-router-dom';
 import api from '../api';
 import { downloadStaffCodePng } from '../staffCodeDownload';
 import { useToast, ConfirmDialog } from '../components/Toast';
+import { useAuth } from '../AuthContext';
+import { localDateISO } from '../localDate';
 
 const SORT_OPTIONS = [
     { value: 'full_name', label: 'Name (A-Z)' },
     { value: 'full_name_desc', label: 'Name (Z-A)' },
     { value: 'staff_id', label: 'Staff ID' },
     { value: 'department', label: 'Department' },
-    { value: 'created_at', label: 'Newest first' },
-    { value: 'created_at_desc', label: 'Oldest first' },
+    { value: 'created_at', label: 'Oldest first' },
+    { value: 'created_at_desc', label: 'Newest first' },
 ];
 
 export default function StaffList() {
@@ -22,6 +24,9 @@ export default function StaffList() {
     const [departments, setDepartments] = useState([]);
     const [departmentFilter, setDepartmentFilter] = useState('');
     const [confirmId, setConfirmId] = useState(null);
+    const { can } = useAuth();
+    const canManage = can('staff.manage');
+    const canExport = can('staff.export');
 
     useEffect(() => {
         api.get('/lookups/departments').then((r) => setDepartments(r.data));
@@ -77,7 +82,7 @@ export default function StaffList() {
         const url = window.URL.createObjectURL(new Blob([res.data]));
         const link = document.createElement('a');
         link.href = url;
-        link.setAttribute('download', `HoganGuards_Staff_${new Date().toISOString().slice(0, 10)}.csv`);
+        link.setAttribute('download', `HoganGuards_Staff_${localDateISO()}.csv`);
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -112,15 +117,15 @@ export default function StaffList() {
                     <p className="text-sm text-slate-500">Manage staff records and status.</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                    <button type="button" onClick={exportCsv} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+                    {canExport && <button type="button" onClick={exportCsv} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
                         Export CSV
-                    </button>
-                    <button type="button" onClick={importCsv} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
+                    </button>}
+                    {canManage && <button type="button" onClick={importCsv} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50">
                         Import CSV
-                    </button>
-                    <Link to="/staff/new" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800">
+                    </button>}
+                    {canManage && <Link to="/staff/new" className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-800">
                         Add staff
-                    </Link>
+                    </Link>}
                 </div>
             </div>
 
@@ -197,12 +202,12 @@ export default function StaffList() {
                                     </span>
                                 </td>
                                 <td className="px-4 py-2 text-right text-xs">
-                                    <button type="button" className="font-semibold text-slate-700 underline" onClick={() => downloadCode(s.id, 'qr')}>QR</button>
+                                    {canManage && <><button type="button" className="font-semibold text-slate-700 underline" onClick={() => downloadCode(s.id, 'qr')}>QR</button>
                                     <button type="button" className="ml-2 font-semibold text-slate-700 underline" onClick={() => downloadCode(s.id, 'barcode')}>Barcode</button>
                                     <Link to={`/staff/${s.id}/edit`} className="ml-3 font-semibold text-sky-700 underline">Edit</Link>
                                     {s.employment_status === 'Active' && (
                                         <button type="button" className="ml-3 font-semibold text-red-600" onClick={() => deactivate(s.id)}>Deactivate</button>
-                                    )}
+                                    )}</>}
                                 </td>
                             </tr>
                         ))}

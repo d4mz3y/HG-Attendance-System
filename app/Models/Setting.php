@@ -2,7 +2,9 @@
 
 namespace App\Models;
 
+use App\Services\ScheduleService;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Schema;
 
 class Setting extends Model
 {
@@ -17,9 +19,18 @@ class Setting extends Model
 
     public static function setValue(string $key, ?string $value): void
     {
-        static::query()->updateOrCreate(
-            ['key' => $key],
-            ['value' => $value]
+        static::query()->upsert(
+            [['key' => $key, 'value' => $value]],
+            ['key'],
+            ['value']
         );
+
+        if (in_array($key, ['shift_start', 'shift_end', 'default_work_days', 'default_break_minutes'], true)
+            && Schema::hasTable('default_schedule_versions')) {
+            app(ScheduleService::class)->recordDefaultVersion(
+                auth()->id(),
+                'Default schedule changed through application configuration'
+            );
+        }
     }
 }

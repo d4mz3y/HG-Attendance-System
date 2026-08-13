@@ -5,6 +5,9 @@
 
     RewriteEngine On
 
+    # Legacy staff photos must never bypass the application's signed route.
+    RewriteRule ^storage/staff-photos(?:/|$) - [F,L]
+
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
     RewriteRule ^ index.php [L]

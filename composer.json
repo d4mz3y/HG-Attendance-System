@@ -3,21 +3,20 @@
     "type": "project",
     "description": "Hogan Guards HQ Barcode Attendance System",
     "keywords": ["laravel", "attendance"],
-    "license": "MIT",
+    "license": "proprietary",
     "require": {
-        "php": "^8.2",
+        "php": "^8.4",
         "endroid/qr-code": "^5.0",
-        "laravel/framework": "^11.0",
+        "laravel/framework": "^12.66",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.9",
         "maatwebsite/excel": "^3.1",
-        "barryvdh/laravel-dompdf": "^2.2",
+        "barryvdh/laravel-dompdf": "^3.1",
         "picqer/php-barcode-generator": "^2.4"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
         "laravel/pint": "^1.13",
-        "laravel/sail": "^1.26",
         "mockery/mockery": "^1.6",
         "nunomaduro/collision": "^8.0",
         "phpunit/phpunit": "^11.0"
@@ -61,11 +60,6 @@
         "allow-plugins": {
             "pestphp/pest-plugin": true,
             "php-http/discovery": true
-        },
-        "policy": {
-            "advisories": {
-                "block": false
-            }
         }
     },
     "minimum-stability": "stable",

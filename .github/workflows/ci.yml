@@ -1,0 +1,196 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: bcmath, curl, dom, gd, intl, mbstring, pdo_mysql, pdo_sqlite, sqlite3, xml, xmlreader, xmlwriter, zip
+          coverage: none
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: composer validate --strict --no-check-publish
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - run: composer audit --locked
+      - run: vendor/bin/pint --test
+      - run: php artisan test
+      - name: Verify migrations, routes, scheduler, and optimized bootstrap
+        env:
+          APP_ENV: testing
+          APP_KEY: base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+          DB_CONNECTION: sqlite
+          DB_DATABASE: ${{ runner.temp }}/hg-attendance-migrations.sqlite
+          CACHE_STORE: array
+          SESSION_DRIVER: array
+        run: |
+          touch "$DB_DATABASE"
+          php artisan migrate:fresh --force
+          php artisan route:list
+          php artisan schedule:list
+          php artisan optimize
+          php artisan optimize:clear
+          php artisan migrate:rollback --step=999 --force
+      - run: sh -n docker/entrypoint.sh scripts/backup.sh scripts/generate-internal-tls.sh scripts/preflight.sh scripts/renew-internal-tls.sh scripts/restore.sh
+      - name: Validate production Compose configuration
+        env:
+          APP_ENV_FILE: .env.docker.example
+          APP_KEY: base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+          APP_URL: https://attendance.example.test:8443
+          APP_PORT: 8443
+          ZEROTIER_BIND_ADDRESS: 10.147.20.10
+          LAN_BIND_ADDRESS: 192.168.10.10
+          TLS_CERT_PATH: /tmp/validation-server.crt
+          TLS_KEY_PATH: /tmp/validation-server.key
+          TLS_CA_CERT_PATH: /tmp/validation-ca.crt
+          TLS_KEY_GROUP_ID: 1000
+          DB_DATABASE: hg_attendance
+          DB_USERNAME: hg_user
+          DB_PASSWORD: validation-only-app-password
+          DB_ROOT_PASSWORD: validation-only-root-password
+          PAYSTACK_PUBLIC_KEY: pk_test_validation
+          PAYSTACK_SECRET_KEY: sk_test_validation
+          PAYSTACK_CURRENCY: USD
+          PAYSTACK_MONTHLY_AMOUNT: 2500
+          PAYSTACK_YEARLY_AMOUNT: 28000
+          SUBSCRIPTION_TRIAL_START: 2026-09-01
+          SUBSCRIPTION_TRIAL_END: 2027-09-01
+          BILLING_EMAIL: billing@example.test
+        run: docker compose --env-file .env.docker.example config --quiet
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm audit
+      - run: npm run build
+      - run: npm run check:pwa
+
+  mysql-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: hg_attendance_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.4"
+          extensions: bcmath, curl, dom, gd, intl, mbstring, pdo_mysql, xml, xmlreader, xmlwriter, zip
+          coverage: none
+
+      - run: composer install --no-interaction --no-progress --prefer-dist
+      - run: php artisan test --configuration=phpunit.mysql.xml
+
+  docker-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    needs: quality
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+        with:
+          install: true
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: hg-attendance-app:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Prepare ephemeral TLS and environment
+        run: |
+          ./scripts/generate-internal-tls.sh attendance.test.internal 127.0.0.1 "$PWD/secrets/ci-tls"
+          cp .env.docker.example .env.docker
+          chmod 600 .env.docker
+          sed -i \
+            -e 's#^APP_KEY=.*#APP_KEY=base64:MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=#' \
+            -e 's#^APP_URL=.*#APP_URL=https://127.0.0.1:18443#' \
+            -e 's#^APP_IMAGE_TAG=.*#APP_IMAGE_TAG=ci#' \
+            -e 's#^APP_PORT=.*#APP_PORT=18443#' \
+            -e 's#^ZEROTIER_BIND_ADDRESS=.*#ZEROTIER_BIND_ADDRESS=127.0.0.1#' \
+            -e 's#^LAN_BIND_ADDRESS=.*#LAN_BIND_ADDRESS=127.0.0.2#' \
+            -e "s#^TLS_CERT_PATH=.*#TLS_CERT_PATH=$PWD/secrets/ci-tls/server.crt#" \
+            -e "s#^TLS_KEY_PATH=.*#TLS_KEY_PATH=$PWD/secrets/ci-tls/server.key#" \
+            -e "s#^TLS_CA_CERT_PATH=.*#TLS_CA_CERT_PATH=$PWD/secrets/ci-tls/ca.crt#" \
+            -e "s#^TLS_KEY_GROUP_ID=.*#TLS_KEY_GROUP_ID=$(id -g)#" \
+            -e 's#^DB_PASSWORD=.*#DB_PASSWORD=ci-app-password-123456789#' \
+            -e 's#^DB_ROOT_PASSWORD=.*#DB_ROOT_PASSWORD=ci-root-password-987654321#' \
+            -e 's#^PAYSTACK_PUBLIC_KEY=.*#PAYSTACK_PUBLIC_KEY=pk_test_validation#' \
+            -e 's#^PAYSTACK_SECRET_KEY=.*#PAYSTACK_SECRET_KEY=sk_test_validation#' \
+            -e 's#^BILLING_EMAIL=.*#BILLING_EMAIL=billing@example.test#' \
+            .env.docker
+
+      - name: Smoke-test the production stack
+        run: |
+          docker compose --env-file .env.docker up -d --wait --wait-timeout 90 mysql
+          docker compose --env-file .env.docker run --rm app php artisan migrate --force
+          docker compose --env-file .env.docker run --rm app php artisan cache:clear
+          docker compose --env-file .env.docker run --rm app php artisan staff:secure-photos
+          docker compose --env-file .env.docker up -d --no-build app
+          healthy=0
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --cacert secrets/ci-tls/ca.crt https://127.0.0.1:18443/up >/dev/null; then
+              healthy=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$healthy" -ne 1 ]; then
+            docker compose --env-file .env.docker ps
+            docker compose --env-file .env.docker logs app
+            exit 1
+          fi
+          docker compose --env-file .env.docker exec -T app sh -c \
+            'test "$(id -u)" = 33 && test -z "${DB_ROOT_PASSWORD:-}"'
+          docker compose --env-file .env.docker exec -T app php -r \
+            'exit(extension_loaded("curl") && extension_loaded("pdo_mysql") && extension_loaded("pdo_sqlite") ? 0 : 1);'
+          curl --fail --silent --cacert secrets/ci-tls/ca.crt --dump-header - --output /dev/null \
+            https://127.0.0.1:18443/up | grep -qi '^content-security-policy:'
+          storage_status=$(curl --silent --cacert secrets/ci-tls/ca.crt --output /dev/null --write-out '%{http_code}' \
+            https://127.0.0.1:18443/storage/should-never-be-public)
+          test "$storage_status" = 404
+          docker compose --env-file .env.docker exec -T app php artisan schedule:list
+
+      - name: Stop the ephemeral stack
+        if: always()
+        run: |
+          if [ -f .env.docker ]; then
+            docker compose --env-file .env.docker down --volumes --remove-orphans
+          fi

@@ -15,7 +15,8 @@ class LeaveService
 
         return Leave::query()
             ->where('staff_id', $staff->id)
-            ->whereBetween('start_date', [$from->toDateString(), $to->toDateString()])
+            ->whereDate('start_date', '<=', $to->toDateString())
+            ->whereDate('end_date', '>=', $from->toDateString())
             ->whereIn('status', ['Pending', 'Approved'])
             ->orderBy('start_date')
             ->get()
@@ -34,9 +35,9 @@ class LeaveService
     {
         return Leave::query()
             ->where('staff_id', $staff->id)
-            ->where('start_date', '<=', $date->toDateString())
-            ->where('end_date', '>=', $date->toDateString())
-            ->whereIn('status', ['Pending', 'Approved'])
+            ->whereDate('start_date', '<=', $date->toDateString())
+            ->whereDate('end_date', '>=', $date->toDateString())
+            ->where('status', 'Approved')
             ->exists();
     }
 
@@ -44,7 +45,8 @@ class LeaveService
     {
         $q = Leave::query()
             ->with('staff')
-            ->whereBetween('start_date', [$from, $to])
+            ->whereDate('start_date', '<=', $to)
+            ->whereDate('end_date', '>=', $from)
             ->where('status', 'Approved');
 
         if ($department) {
